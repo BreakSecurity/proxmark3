@@ -249,9 +249,9 @@ int wu_queue_push(wu_queue_ctx_t *ctx, size_t id, size_t off, size_t max) {
 
     if (ctx->queue_head == 0) first = 1;
 
-    if (!(ptr = (wu_queue_item_t *) malloc(sizeof(wu_queue_item_t)))) {
+    if (!(ptr = (wu_queue_item_t *) calloc(1, sizeof(wu_queue_item_t)))) {
 #if TEST_UNIT == 1
-        fprintf(stderr, "! Error: malloc() failed (%d): %s\n", errno, strerror(errno));
+        fprintf(stderr, "! Error: calloc() failed (%d): %s\n", errno, strerror(errno));
 #endif
         pthread_mutex_unlock(&ctx->queue_mutex);
         return ERROR_ALLOC;
@@ -371,8 +371,6 @@ int wu_queue_destroy(wu_queue_ctx_t *ctx) {
     if (!ctx) return ERROR_CTX_NULL;
     if (!ctx->init) return ERROR_CTX_IS_NOT_INIT;
 
-    pthread_mutex_lock(&ctx->queue_mutex);
-
     int ret = -1;
 
     // unload the queue
@@ -398,8 +396,6 @@ int wu_queue_destroy(wu_queue_ctx_t *ctx) {
     ctx->queue_tail = 0; //NULL;
     ctx->init = 0;
 
-    pthread_mutex_unlock(&ctx->queue_mutex);
-
     pthread_mutex_destroy(&ctx->queue_mutex);
     pthread_mutexattr_destroy(&ctx->queue_mutex_attr);
 
@@ -415,7 +411,7 @@ int main(void) {
         { 16384, 5 }, // 0, best for Intel GPU's with Neo
         { 8192,  6 }, // 1, only for Intel NEO
         { 4096,  7 }, // 2 (old 0) seems the best for all others (also NVIDIA) :D Apple/Intel GPU's stable here
-        { 2048,  8 }, // 3 (old 1) usefull for any kind of CPU's
+        { 2048,  8 }, // 3 (old 1) usefulfor any kind of CPU's
         { 1024,  9 },
         { 512,  10 },
         { 256,  11 },

@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// Jonathan Westhues, Mar 2006
-// Edits by Gerhard de Koning Gans, Sep 2007
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Definitions for all the types of commands that may be sent over USB; our
 // own protocol.
@@ -181,6 +188,7 @@ typedef struct {
     bool compiled_with_hitag           : 1;
     bool compiled_with_em4x50          : 1;
     bool compiled_with_em4x70          : 1;
+    bool compiled_with_zx8211          : 1;
     // hf
     bool compiled_with_hfsniff         : 1;
     bool compiled_with_hfplot          : 1;
@@ -197,9 +205,10 @@ typedef struct {
     // rdv4
     bool hw_available_flash            : 1;
     bool hw_available_smartcard        : 1;
+    bool is_rdv4                       : 1;
 } PACKED capabilities_t;
-#define CAPABILITIES_VERSION 5
-extern capabilities_t pm3_capabilities;
+#define CAPABILITIES_VERSION 6
+extern capabilities_t g_pm3_capabilities;
 
 // For CMD_LF_T55XX_WRITEBL
 typedef struct {
@@ -262,7 +271,7 @@ typedef struct {
 typedef struct {
     uint8_t type;
     uint16_t len;
-    uint8_t *data;
+    uint8_t data[];
 } PACKED lf_hitag_t;
 
 typedef struct {
@@ -288,92 +297,6 @@ typedef struct {
     const char *desc;
     const char *value;
 } PACKED ecdsa_publickey_t;
-
-
-// iCLASS auth request data structure
-// used with read block, dump, write block
-typedef struct {
-    uint8_t key[8];
-    bool use_raw;
-    bool use_elite;
-    bool use_credit_key;
-    bool use_replay;
-    bool send_reply;
-    bool do_auth;
-    uint8_t blockno;
-} PACKED iclass_auth_req_t;
-
-// iCLASS read block response data structure
-typedef struct {
-    bool isOK;
-    uint8_t div_key[8];
-    uint8_t mac[4];
-    uint8_t data[8];
-} PACKED iclass_readblock_resp_t;
-
-// iCLASS dump data structure
-typedef struct {
-    iclass_auth_req_t req;
-    uint8_t start_block;
-    uint8_t end_block;
-} PACKED iclass_dump_req_t;
-
-// iCLASS write block request data structure
-typedef struct {
-    iclass_auth_req_t req;
-    uint8_t data[8];
-} PACKED iclass_writeblock_req_t;
-
-// iCLASS dump data structure
-typedef struct {
-    uint8_t blockno;
-    uint8_t data[8];
-} PACKED iclass_restore_item_t;
-
-typedef struct {
-    iclass_auth_req_t req;
-    uint8_t item_cnt;
-    iclass_restore_item_t blocks[];
-} PACKED iclass_restore_req_t;
-
-typedef struct iclass_premac {
-    uint8_t mac[4];
-} PACKED iclass_premac_t;
-
-typedef struct {
-    bool use_credit_key;
-    uint8_t count;
-    iclass_premac_t items[];
-} PACKED iclass_chk_t;
-
-
-// iclass / picopass chip config structures and shared routines
-typedef struct {
-    uint8_t app_limit;      //[8]
-    uint8_t otp[2];         //[9-10]
-    uint8_t block_writelock;//[11]
-    uint8_t chip_config;    //[12]
-    uint8_t mem_config;     //[13]
-    uint8_t eas;            //[14]
-    uint8_t fuses;          //[15]
-} PACKED picopass_conf_block_t;
-
-// iCLASS secure mode memory mapping
-typedef struct {
-    uint8_t csn[8];
-    picopass_conf_block_t conf;
-    uint8_t epurse[8];
-    uint8_t key_d[8];
-    uint8_t key_c[8];
-    uint8_t app_issuer_area[8];
-} PACKED picopass_hdr_t;
-
-// iCLASS non-secure mode memory mapping
-typedef struct {
-    uint8_t csn[8];
-    picopass_conf_block_t conf;
-    uint8_t app_issuer_area[8];
-} PACKED picopass_ns_hdr_t;
 
 
 typedef struct {
@@ -456,6 +379,7 @@ typedef struct {
 #define CMD_TIA                                                           0x0117
 #define CMD_BREAK_LOOP                                                    0x0118
 #define CMD_SET_TEAROFF                                                   0x0119
+#define CMD_GET_DBGMODE                                                   0x0120
 
 // RDV40, Flash memory operations
 #define CMD_FLASHMEM_WRITE                                                0x0121
@@ -492,17 +416,18 @@ typedef struct {
 
 #define CMD_SPIFFS_WIPE                                                   0x013A
 
+#define CMD_SET_FPGAMODE                                                  0x013F
+
 // This take a +0x2000 as they are high level helper and special functions
-// As the others, they may have safety level argument if it makkes sense
+// As the others, they may have safety level argument if it makes sense
 #define CMD_SPIFFS_PRINT_TREE                                             0x2130
 #define CMD_SPIFFS_GET_TREE                                               0x2131
 #define CMD_SPIFFS_TEST                                                   0x2132
 #define CMD_SPIFFS_PRINT_FSINFO                                           0x2133
 #define CMD_SPIFFS_DOWNLOAD                                               0x2134
 #define CMD_SPIFFS_DOWNLOADED                                             0x2135
+#define CMD_SPIFFS_ELOAD                                                  0x2136
 #define CMD_SPIFFS_CHECK                                                  0x3000
-// more ?
-
 
 // RDV40,  Smart card operations
 #define CMD_SMART_RAW                                                     0x0140
@@ -533,7 +458,7 @@ typedef struct {
 #define CMD_LF_SIMULATE_BIDIR                                             0x020E
 #define CMD_SET_ADC_MUX                                                   0x020F
 #define CMD_LF_HID_CLONE                                                  0x0210
-#define CMD_LF_EM410X_WRITE                                               0x0211
+#define CMD_LF_EM410X_CLONE                                               0x0211
 #define CMD_LF_T55XX_READBL                                               0x0214
 #define CMD_LF_T55XX_WRITEBL                                              0x0215
 #define CMD_LF_T55XX_RESET_READ                                           0x0216
@@ -562,6 +487,7 @@ typedef struct {
 #define CMD_LF_EM4X70_AUTH                                                0x0263
 #define CMD_LF_EM4X70_WRITEPIN                                            0x0264
 #define CMD_LF_EM4X70_WRITEKEY                                            0x0265
+#define CMD_LF_EM4X70_BRUTE                                               0x0266
 // Sampling configuration for LF reader/sniffer
 #define CMD_LF_SAMPLING_SET_CONFIG                                        0x021D
 #define CMD_LF_FSK_SIMULATE                                               0x021E
@@ -579,10 +505,16 @@ typedef struct {
 #define CMD_LF_T55XX_CHK_PWDS                                             0x0230
 #define CMD_LF_T55XX_DANGERRAW                                            0x0231
 
+
+// ZX8211
+#define CMD_LF_ZX_READ                                                    0x0270
+#define CMD_LF_ZX_WRITE                                                   0x0271
+
 /* CMD_SET_ADC_MUX: ext1 is 0 for lopkd, 1 for loraw, 2 for hipkd, 3 for hiraw */
 
 // For the 13.56 MHz tags
 #define CMD_HF_ISO15693_ACQ_RAW_ADC                                       0x0300
+#define CMD_HF_ACQ_RAW_ADC                                                0x0301
 #define CMD_HF_SRI_READ                                                   0x0303
 #define CMD_HF_ISO14443B_COMMAND                                          0x0305
 #define CMD_HF_ISO15693_READER                                            0x0310
@@ -591,7 +523,17 @@ typedef struct {
 #define CMD_HF_ISO15693_COMMAND                                           0x0313
 #define CMD_HF_ISO15693_FINDAFI                                           0x0315
 #define CMD_HF_ISO15693_CSETUID                                           0x0316
-#define CMD_HF_ISO15693_SLIX_L_DISABLE_PRIVACY                            0x0317
+#define CMD_HF_ISO15693_SLIX_ENABLE_PRIVACY                               0x0867
+#define CMD_HF_ISO15693_SLIX_DISABLE_PRIVACY                              0x0317
+#define CMD_HF_ISO15693_SLIX_DISABLE_EAS                                  0x0318
+#define CMD_HF_ISO15693_SLIX_ENABLE_EAS                                   0x0862
+#define CMD_HF_ISO15693_SLIX_PASS_PROTECT_AFI                             0x0863
+#define CMD_HF_ISO15693_SLIX_PASS_PROTECT_EAS                             0x0864
+#define CMD_HF_ISO15693_SLIX_WRITE_PWD                                    0x0865
+#define CMD_HF_ISO15693_WRITE_AFI                                         0x0866
+#define CMD_HF_TEXKOM_SIMULATE                                            0x0320
+#define CMD_HF_ISO15693_EML_CLEAR                                         0x0330
+#define CMD_HF_ISO15693_EML_SETMEM                                        0x0331
 
 #define CMD_LF_SNIFF_RAW_ADC                                              0x0360
 
@@ -623,6 +565,7 @@ typedef struct {
 
 #define CMD_HF_EPA_COLLECT_NONCE                                          0x038A
 #define CMD_HF_EPA_REPLAY                                                 0x038B
+#define CMD_HF_EPA_PACE_SIMULATE                                          0x039C
 
 #define CMD_HF_LEGIC_INFO                                                 0x03BC
 #define CMD_HF_LEGIC_ESET                                                 0x03BD
@@ -680,12 +623,14 @@ typedef struct {
 #define CMD_HF_MIFARE_ACQ_ENCRYPTED_NONCES                                0x0613
 #define CMD_HF_MIFARE_ACQ_NONCES                                          0x0614
 #define CMD_HF_MIFARE_STATIC_NESTED                                       0x0615
+#define CMD_HF_MIFARE_STATIC_ENC                                          0x0616
 
 #define CMD_HF_MIFARE_READBL                                              0x0620
 #define CMD_HF_MIFAREU_READBL                                             0x0720
 #define CMD_HF_MIFARE_READSC                                              0x0621
 #define CMD_HF_MIFAREU_READCARD                                           0x0721
 #define CMD_HF_MIFARE_WRITEBL                                             0x0622
+#define CMD_HF_MIFARE_VALUE                                               0x0627
 #define CMD_HF_MIFAREU_WRITEBL                                            0x0722
 #define CMD_HF_MIFAREU_WRITEBL_COMPAT                                     0x0723
 
@@ -740,8 +685,15 @@ typedef struct {
 #define CMD_HF_MIFARE_GEN3BLK                                             0x0851
 #define CMD_HF_MIFARE_GEN3FREEZ                                           0x0852
 
-// Gen 3 GTU magic cards
-#define CMD_HF_MIFARE_G3_RDBL                                             0x0860
+// Gen 4 GTU magic cards
+#define CMD_HF_MIFARE_G4_RDBL                                             0x0860
+#define CMD_HF_MIFARE_G4_WRBL                                             0x0861
+
+// Gen 4 GDM magic cards
+#define CMD_HF_MIFARE_G4_GDM_RDBL                                         0x0870
+#define CMD_HF_MIFARE_G4_GDM_WRBL                                         0x0871
+#define CMD_HF_MIFARE_G4_GDM_CONFIG                                       0x0872
+#define CMD_HF_MIFARE_G4_GDM_WRCFG                                        0x0873
 
 #define CMD_UNKNOWN                                                       0xFFFF
 
@@ -761,28 +713,6 @@ typedef struct {
 #define FLAG_CVE21_0430         0x2000
 
 
-// iCLASS reader flags
-#define FLAG_ICLASS_READER_INIT        0x01
-#define FLAG_ICLASS_READER_CLEARTRACE  0x02
-#define FLAG_ICLASS_READER_ONLY_ONCE   0x04
-#define FLAG_ICLASS_READER_CREDITKEY   0x08
-#define FLAG_ICLASS_READER_AIA         0x10
-
-// iCLASS reader status flags
-#define FLAG_ICLASS_CSN         0x01
-#define FLAG_ICLASS_CC          0x02
-#define FLAG_ICLASS_CONF        0x04
-#define FLAG_ICLASS_AIA         0x08
-
-// iCLASS simulation modes
-#define ICLASS_SIM_MODE_CSN                   0
-#define ICLASS_SIM_MODE_CSN_DEFAULT           1
-#define ICLASS_SIM_MODE_READER_ATTACK         2
-#define ICLASS_SIM_MODE_FULL                  3
-#define ICLASS_SIM_MODE_READER_ATTACK_KEYROLL 4
-#define ICLASS_SIM_MODE_EXIT_AFTER_MAC        5  // note: device internal only
-#define ICLASS_SIM_MODE_CONFIG_CARD           6
-
 #define MODE_SIM_CSN        0
 #define MODE_EXIT_AFTER_MAC 1
 #define MODE_FULLSIM        2
@@ -801,6 +731,8 @@ typedef struct {
 
 // Error codes                          Usages:
 
+// Success, regular quit
+#define PM3_SQUIT               2
 // Success, transfer nonces            pm3:        Sending nonces back to client
 #define PM3_SNONCES             1
 // Success (no error)
@@ -852,16 +784,20 @@ typedef struct {
 #define PM3_EFAILED           -21
 // partial success                      client/pm3: when trying to dump a tag and fails on some blocks.  Partial dump.
 #define PM3_EPARTIAL          -22
-// tearoff occured                      client/pm3: when a tearoff hook was called and a tearoff actually happened
+// tearoff occurred                      client/pm3: when a tearoff hook was called and a tearoff actually happened
 #define PM3_ETEAROFF          -23
 
 // Got bad CRC                          client/pm3: error in transfer of data,  crc mismatch.
 #define PM3_ECRC              -24
 
+// STATIC Nonce detect                  pm3:  when collecting nonces for hardnested
+#define PM3_ESTATIC_NONCE     -25
+
 // No data                              pm3:        no data available, no host frame available (not really an error)
 #define PM3_ENODATA           -98
 // Quit program                         client:     reserved, order to quit the program
 #define PM3_EFATAL            -99
+
 
 // LF
 #define LF_FREQ2DIV(f) ((int)(((12000.0 + (f)/2.0)/(f))-1))
@@ -886,10 +822,10 @@ typedef struct {
 
 
 // CMD_DEVICE_INFO response packet has flags in arg[0], flag definitions:
-/* Whether a bootloader that understands the common_area is present */
+/* Whether a bootloader that understands the g_common_area is present */
 #define DEVICE_INFO_FLAG_BOOTROM_PRESENT             (1<<0)
 
-/* Whether a osimage that understands the common_area is present */
+/* Whether a osimage that understands the g_common_area is present */
 #define DEVICE_INFO_FLAG_OSIMAGE_PRESENT             (1<<1)
 
 /* Set if the bootloader is currently executing */

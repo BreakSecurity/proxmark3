@@ -1,9 +1,18 @@
 //-----------------------------------------------------------------------------
-// Salvador Mendoza (salmg.net) - January 01, 2021
+// Copyright (C) Salvador Mendoza (salmg.net) - January 01, 2021
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Code to relay 14a technology data aka reblay by Salvador Mendoza
 //-----------------------------------------------------------------------------
@@ -33,7 +42,7 @@ void ModInfo(void) {
 *
 * Instructions:
 *
-* I recommend setting up & run the other end before start sending or receving data in this Proxmark3
+* I recommend setting up & run the other end before start sending or receiving data in this Proxmark3
 * standalone.
 *
 * For the reading mode:
@@ -90,7 +99,7 @@ void RunMod() {
 
     // For received Bluetooth package
     uint8_t rpacket[MAX_FRAME_SIZE] = { 0x00 };
-    uint16_t lenpacket = 0;
+    uint16_t lenpacket;
 
     // For answering the commands
     uint8_t apdubuffer[MAX_FRAME_SIZE] = { 0x00 };
@@ -259,7 +268,7 @@ void RunMod() {
                 SpinDelay(500);
                 state = STATE_READ;
                 DbpString(_YELLOW_("[ ") "Initialized reading mode" _YELLOW_(" ]"));
-                break;
+                continue;
             }
 
             // We need to listen to the high-frequency, peak-detected path.
@@ -305,24 +314,24 @@ void RunMod() {
                     }
                 }
                 if (receivedCmd[0] == ISO14443A_CMD_REQA && len == 1) {  // Received a REQUEST
-                    DbpString(_YELLOW_("+") "REQUEST Received");
+//                    DbpString(_YELLOW_("+") "REQUEST Received");
                     p_response = &responses[RESP_INDEX_ATQA];
                 } else if (receivedCmd[0] == ISO14443A_CMD_HALT && len == 4) {  // Received a HALT
-                    DbpString(_YELLOW_("+") "Received a HALT");
+//                    DbpString(_YELLOW_("+") "Received a HALT");
                     p_response = NULL;
                     resp = 0;
                 } else if (receivedCmd[0] == ISO14443A_CMD_WUPA && len == 1) {  // Received a WAKEUP
-                    DbpString(_YELLOW_("+") "WAKEUP Received");
+//                    DbpString(_YELLOW_("+") "WAKEUP Received");
                     p_response = &responses[RESP_INDEX_ATQA];
                     resp = 0;
                 } else if (receivedCmd[1] == 0x20 && receivedCmd[0] == ISO14443A_CMD_ANTICOLL_OR_SELECT && len == 2) {  // Received request for UID (cascade 1)
-                    DbpString(_YELLOW_("+") "Request for UID C1");
+//                    DbpString(_YELLOW_("+") "Request for UID C1");
                     p_response = &responses[RESP_INDEX_UIDC1];
                 } else if (receivedCmd[1] == 0x70 && receivedCmd[0] == ISO14443A_CMD_ANTICOLL_OR_SELECT && len == 9) {  // Received a SELECT (cascade 1)
-                    DbpString(_YELLOW_("+") "Request for SELECT S1");
+//                    DbpString(_YELLOW_("+") "Request for SELECT S1");
                     p_response = &responses[RESP_INDEX_SAKC1];
                 } else if (receivedCmd[0] == ISO14443A_CMD_RATS && len == 4) {  // Received a RATS request
-                    DbpString(_YELLOW_("+") "Request for RATS");
+//                    DbpString(_YELLOW_("+") "Request for RATS");
                     p_response = &responses[RESP_INDEX_RATS];
                     resp = 1;
                 } else if (receivedCmd[0] == 0xf2 && len == 4) {  // ACKed - Time extension

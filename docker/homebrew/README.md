@@ -11,7 +11,7 @@ make -j client USE_BREW=1 SKIPREADLINE=1
 make -j mfkey
 make -j nonce2key
 make -j mf_nonce_brute
-make -j hitag2crack SKIPGPU=1
+make -j hitag2crack SKIPOPENCL=1
 make -j fpga_compress
 ```
 
@@ -21,6 +21,6 @@ make -j fpga_compress
 cd client
 mkdir build
 cd build
-cmake -DEMBED_BZIP2=1 ..
+cmake -DEMBED_BZIP2=1 -DEMBED_LZ4=1 ..
 make -j
 ```

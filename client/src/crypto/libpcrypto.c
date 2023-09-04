@@ -1,16 +1,24 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2018 Merlok
-// Copyright (C) 2018 drHatson
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // crypto commands
 //-----------------------------------------------------------------------------
 
 #include "crypto/libpcrypto.h"
 #include "crypto/asn1utils.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -26,8 +34,11 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/error.h>
+#include <mbedtls/blowfish.h>
+#include "libpcrypto.h"
 #include "util.h"
 #include "ui.h"
+#include "math.h"
 
 void des_encrypt(void *out, const void *in, const void *key) {
     mbedtls_des_context ctx;
@@ -63,6 +74,54 @@ void des_decrypt_cbc(void *out, const void *in, const int length, const void *ke
     mbedtls_des_context ctx;
     mbedtls_des_setkey_dec(&ctx, key);
     mbedtls_des_crypt_cbc(&ctx, MBEDTLS_DES_DECRYPT, length, iv, in, out);
+}
+
+void des3_encrypt(void *out, const void *in, const void *key, uint8_t keycount) {
+    switch (keycount) {
+        case 1:
+            des_encrypt(out, in, key);
+            break;
+        case 2: {
+            mbedtls_des3_context ctx3;
+            mbedtls_des3_set2key_enc(&ctx3, key);
+            mbedtls_des3_crypt_ecb(&ctx3, in, out);
+            mbedtls_des3_free(&ctx3);
+            break;
+        }
+        case 3: {
+            mbedtls_des3_context ctx3;
+            mbedtls_des3_set3key_enc(&ctx3, key);
+            mbedtls_des3_crypt_ecb(&ctx3, in, out);
+            mbedtls_des3_free(&ctx3);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+void des3_decrypt(void *out, const void *in, const void *key, uint8_t keycount) {
+    switch (keycount) {
+        case 1:
+            des_encrypt(out, in, key);
+            break;
+        case 2: {
+            mbedtls_des3_context ctx3;
+            mbedtls_des3_set2key_dec(&ctx3, key);
+            mbedtls_des3_crypt_ecb(&ctx3, in, out);
+            mbedtls_des3_free(&ctx3);
+            break;
+        }
+        case 3: {
+            mbedtls_des3_context ctx3;
+            mbedtls_des3_set3key_dec(&ctx3, key);
+            mbedtls_des3_crypt_ecb(&ctx3, in, out);
+            mbedtls_des3_free(&ctx3);
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 // NIST Special Publication 800-38A — Recommendation for block cipher modes of operation: methods and techniques, 2001.
@@ -537,7 +596,7 @@ exit:
     return res;
 }
 
-void bin_xor(uint8_t *d1, uint8_t *d2, size_t len) {
+void bin_xor(uint8_t *d1, const uint8_t *d2, size_t len) {
     for (size_t i = 0; i < len; i++)
         d1[i] = d1[i] ^ d2[i];
 }
@@ -550,12 +609,60 @@ void AddISO9797M2Padding(uint8_t *ddata, size_t *ddatalen, uint8_t *sdata, size_
     ddata[sdatalen] = ISO9797_M2_PAD_BYTE;
 }
 
-size_t FindISO9797M2PaddingDataLen(uint8_t *data, size_t datalen) {
+size_t FindISO9797M2PaddingDataLen(const uint8_t *data, size_t datalen) {
     for (int i = datalen; i > 0; i--) {
         if (data[i - 1] == 0x80)
             return i - 1;
         if (data[i - 1] != 0x00)
             return 0;
     }
+    return 0;
+}
+
+
+int blowfish_decrypt(uint8_t *iv, uint8_t *key, uint8_t *input, uint8_t *output, int length) {
+    uint8_t iiv[16] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    if (iv)
+        memcpy(iiv, iv, 16);
+
+    mbedtls_blowfish_context blow;
+    mbedtls_blowfish_init(&blow);
+    if (mbedtls_blowfish_setkey(&blow, key, 64))
+        return 1;
+    if (mbedtls_blowfish_crypt_cbc(&blow, MBEDTLS_BLOWFISH_DECRYPT, length, iiv, input, output))
+        return 2;
+    mbedtls_blowfish_free(&blow);
+
+    return 0;
+}
+
+// Implementation from http://www.secg.org/sec1-v2.pdf#subsubsection.3.6.1
+int ansi_x963_sha256(uint8_t *sharedSecret, size_t sharedSecretLen, uint8_t *sharedInfo, size_t sharedInfoLen, size_t keyDataLen, uint8_t *keyData) {
+    // sha256 hash has (practically) no max input len, so skipping that step
+
+    if (keyDataLen >= 32 * (pow(2, 32) - 1)) {
+        return 1;
+    }
+
+    uint32_t counter = 0x00000001;
+
+    for (int i = 0; i < (keyDataLen / 32); ++i) {
+        uint8_t *hashMaterial = malloc(4 + sharedSecretLen + sharedInfoLen);
+        memcpy(hashMaterial, sharedSecret, sharedSecretLen);
+        hashMaterial[sharedSecretLen] = (counter >> 24);
+        hashMaterial[sharedSecretLen + 1] = (counter >> 16) & 0xFF;
+        hashMaterial[sharedSecretLen + 2] = (counter >> 8) & 0xFF;
+        hashMaterial[sharedSecretLen + 3] = counter & 0xFF;
+        memcpy(hashMaterial + sharedSecretLen + 4, sharedInfo, sharedInfoLen);
+
+        uint8_t hash[32] = {0};
+        sha256hash(hashMaterial, 4 + sharedSecretLen + sharedInfoLen, hash);
+        free(hashMaterial);
+
+        memcpy(keyData + (32 * i), hash, 32);
+
+        counter++;
+    }
+
     return 0;
 }

@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2009 Michael Gernoth <michael at gernoth.net>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // GUI (QT)
 //-----------------------------------------------------------------------------
@@ -32,9 +40,7 @@ class ProxWidget;
 class Plot: public QWidget {
   private:
     QWidget *master;
-    uint32_t GraphStart; // Starting point/offset for the left side of the graph
-    uint32_t GraphStop;  // Stop point/offset for the right side of the graph
-    double GraphPixelsPerPoint; // How many visual pixels are between each sample point (x axis)
+    double g_GraphPixelsPerPoint; // How many visual pixels are between each sample point (x axis)
     uint32_t CursorAPos;
     uint32_t CursorBPos;
     void PlotGraph(int *buffer, size_t len, QRect plotRect, QRect annotationRect, QPainter *painter, int graphNum);
@@ -150,7 +156,8 @@ class ProxGuiQT : public QObject {
     void HideGraphWindow(void);
 
     // hook up picture viewer
-    void ShowPictureWindow(char *fn);
+    void ShowPictureWindow(const QImage &img);
+    void ShowBase64PictureWindow(char *b64);
     void HidePictureWindow(void);
     void RepaintPictureWindow(void);
 
@@ -163,7 +170,8 @@ class ProxGuiQT : public QObject {
     void _HideGraphWindow(void);
 
     // hook up picture viewer
-    void _ShowPictureWindow(char *fn);
+    void _ShowPictureWindow(const QImage &img);
+    void _ShowBase64PictureWindow(char *b64);
     void _HidePictureWindow(void);
     void _RepaintPictureWindow(void);
 
@@ -177,7 +185,8 @@ class ProxGuiQT : public QObject {
     void ExitSignal(void);
 
     // hook up picture viewer signals
-    void ShowPictureWindowSignal(char *fn);
+    void ShowPictureWindowSignal(const QImage &img);
+    void ShowBase64PictureWindowSignal(char *b64);
     void HidePictureWindowSignal(void);
     void RepaintPictureWindowSignal(void);
 };

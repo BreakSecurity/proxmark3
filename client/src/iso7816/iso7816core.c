@@ -1,17 +1,23 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2017 Merlok
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // ISO7816 core functions
 //-----------------------------------------------------------------------------
 
 #include "iso7816core.h"
-
 #include <string.h>
-
 #include "commonutil.h"  // ARRAYLEN
 #include "comms.h"       // DropField
 #include "cmdparser.h"
@@ -21,6 +27,7 @@
 #include "cmdhf14b.h"
 #include "iso14b.h"      // iso14b_raw_cmd_t
 #include "util_posix.h"
+#include "protocols.h"   // ISO7816 APDU return codes
 
 //iceman:  this logging setting, should be unified with client debug etc.
 static bool APDULogging = false;
@@ -74,7 +81,7 @@ int Iso7816Connect(Iso7816CommandChannel channel) {
 }
 
 int Iso7816ExchangeEx(Iso7816CommandChannel channel, bool activate_field, bool leave_field_on,
-                      sAPDU apdu, bool include_le, uint16_t le, uint8_t *result,
+                      sAPDU_t apdu, bool include_le, uint16_t le, uint8_t *result,
                       size_t max_result_len, size_t *result_len, uint16_t *sw) {
 
     *result_len = 0;
@@ -162,7 +169,7 @@ int Iso7816ExchangeEx(Iso7816CommandChannel channel, bool activate_field, bool l
         *sw = isw;
     }
 
-    if (isw != 0x9000) {
+    if (isw != ISO7816_OK) {
         if (APDULogging) {
             if (*sw >> 8 == 0x61) {
                 PrintAndLogEx(ERR, "APDU chaining len %02x", *sw & 0xFF);
@@ -175,7 +182,7 @@ int Iso7816ExchangeEx(Iso7816CommandChannel channel, bool activate_field, bool l
     return PM3_SUCCESS;
 }
 
-int Iso7816Exchange(Iso7816CommandChannel channel, bool leave_field_on, sAPDU apdu, uint8_t *result, size_t max_result_len, size_t *result_len, uint16_t *sw) {
+int Iso7816Exchange(Iso7816CommandChannel channel, bool leave_field_on, sAPDU_t apdu, uint8_t *result, size_t max_result_len, size_t *result_len, uint16_t *sw) {
     return Iso7816ExchangeEx(channel
                              , false
                              , leave_field_on
@@ -195,7 +202,7 @@ int Iso7816Select(Iso7816CommandChannel channel, bool activate_field, bool leave
     return Iso7816ExchangeEx(channel
                              , activate_field
                              , leave_field_on
-    , (sAPDU) {0x00, 0xa4, 0x04, 0x00, aid_len, aid}
+    , (sAPDU_t) {0x00, 0xa4, 0x04, 0x00, aid_len, aid}
     , (channel == CC_CONTACTLESS)
     , 0
     , result

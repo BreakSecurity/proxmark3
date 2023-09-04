@@ -1,36 +1,21 @@
-/*
- * at91sam7s USB CDC device implementation
- *
- * Copyright (c) 2012, Roel Verdult
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- * 1. Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- * notice, this list of conditions and the following disclaimer in the
- * documentation and/or other materials provided with the distribution.
- * 3. Neither the name of the copyright holders nor the
- * names of its contributors may be used to endorse or promote products
- * derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ''AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * based on the "Basic USB Example" from ATMEL (doc6123.pdf)
- *
- * @file usb_cdc.c
- * @brief
- */
+//-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
+// at91sam7s USB CDC device implementation
+// based on the "Basic USB Example" from ATMEL (doc6123.pdf)
+//-----------------------------------------------------------------------------
 
 #include "usb_cdc.h"
 #include "proxmark3_arm.h"
@@ -129,7 +114,7 @@ AT91SAM7S256  USB Device Port
 #define SET_LINE_CODING               0x2021
 #define SET_CONTROL_LINE_STATE        0x2221
 
-AT91PS_UDP pUdp = AT91C_BASE_UDP;
+static AT91PS_UDP pUdp = AT91C_BASE_UDP;
 static uint8_t btConfiguration = 0;
 static uint8_t btConnection    = 0;
 static uint8_t btReceiveBank   = AT91C_UDP_RX_DATA_BK0;
@@ -381,11 +366,60 @@ static const char StrProduct[] = {
     'p', 0, 'r', 0, 'o', 0, 'x', 0, 'm', 0, 'a', 0, 'r', 0, 'k', 0, '3', 0
 };
 
+#ifndef WITH_FLASH
 static const char StrSerialNumber[] = {
     14,         // Length
     0x03,       // Type is string
     'i', 0, 'c', 0, 'e', 0, 'm', 0, 'a', 0, 'n', 0
 };
+#else // WITH_FLASH is defined
+
+// Manually calculated size of descriptor with unique ID:
+// offset  0, lengt h 1: total length field
+// offset  1, length  1: descriptor type field
+// offset  2, length 12: 6x unicode chars (original string)
+// offset 14, length  4: 2x unicode chars (underscores)      [[ to avoid descriptor being (size % 8) == 0, OS bug workaround ]]
+// offset 18, length 32: 16x unicode chars (8-byte serial as hex characters)
+// ============================
+// total: 50 bytes
+#define USB_STRING_DESCRIPTOR_SERIAL_NUMBER_LENGTH  50
+char StrSerialNumber[] = {
+    14,         // Length is initially identical to non-unique version ... The length updated at boot, if unique serial is available
+    0x03,       // Type is string
+    'i', 0, 'c', 0, 'e', 0, 'm', 0, 'a', 0, 'n', 0,
+    '_', 0, '_', 0,
+    'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0,
+    'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0, 'x', 0,
+};
+void usb_update_serial(uint64_t newSerialNumber) {
+    static bool configured = false; // TODO: enable by setting to false here...
+    if (configured) {
+        return;
+    }
+    // run this only once per boot... even if it fails to find serial number
+    configured = true;
+    // reject serial number if all-zero or all-ones
+    if ((newSerialNumber == 0x0000000000000000) || (newSerialNumber == 0xFFFFFFFFFFFFFFFF)) {
+        return;
+    }
+    // Descriptor is, effectively, initially identical to non-unique serial
+    // number because it reports the shorter length in the first byte.
+    // Convert uniqueID's eight bytes to 16 unicode characters in the
+    // descriptor and, finally, update the descriptor's length, which
+    // causes the serial number to become visible.
+    for (uint8_t i = 0; i < 8; i++) {
+        // order of nibbles chosen to match display order from `hw status`
+        uint8_t nibble1 = (newSerialNumber >> ((8 * i) + 4)) & 0xFu; // bitmasks [0xF0, 0xF000, 0xF00000, ... 0xF000000000000000]
+        uint8_t nibble2 = (newSerialNumber >> ((8 * i) + 0)) & 0xFu; // bitmasks [0x0F, 0x0F00, 0x0F0000, ... 0x0F00000000000000]
+        char c1 = nibble1 < 10 ? '0' + nibble1 : 'A' + (nibble1 - 10);
+        char c2 = nibble2 < 10 ? '0' + nibble2 : 'A' + (nibble2 - 10);
+        StrSerialNumber[18 + (4 * i) + 0] = c1; // [ 18, 22, .., 42, 46 ]
+        StrSerialNumber[18 + (4 * i) + 2] = c2; // [ 20, 24, .., 44, 48 ]
+    }
+    StrSerialNumber[0] = USB_STRING_DESCRIPTOR_SERIAL_NUMBER_LENGTH;
+}
+#endif
+
 
 // size includes their own field.
 static const char StrMS_OSDescriptor[] = {
@@ -442,7 +476,7 @@ typedef struct {
     uint8_t DataBits;
 } AT91S_CDC_LINE_CODING, *AT91PS_CDC_LINE_CODING;
 
-AT91S_CDC_LINE_CODING line = { // purely informative, actual values don't matter
+static AT91S_CDC_LINE_CODING line = { // purely informative, actual values don't matter
     USART_BAUD_RATE, // baudrate
     0,               // 1 Stop Bit
     0,               // None Parity

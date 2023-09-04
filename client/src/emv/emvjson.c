@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2018 Merlok
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // EMV json logic
 //-----------------------------------------------------------------------------
@@ -18,7 +26,7 @@
 #include "fileutils.h"
 #include "pm3_cmd.h"
 
-static const ApplicationDataElm ApplicationData[] = {
+static const ApplicationDataElm_t ApplicationData[] = {
     {0x82,    "AIP"},
     {0x94,    "AFL"},
 
@@ -198,7 +206,7 @@ int JsonSaveTLVTree(json_t *root, json_t *elm, const char *path, struct tlvdb *t
 
         if (AppDataName) {
             char appdatalink[200] = {0};
-            sprintf(appdatalink, "$.ApplicationData.%s", AppDataName);
+            snprintf(appdatalink, sizeof(appdatalink), "$.ApplicationData.%s", AppDataName);
             JsonSaveBufAsHex(root, appdatalink, (uint8_t *)tlvpelm->value, tlvpelm->len);
         }
 
@@ -218,7 +226,7 @@ int JsonSaveTLVTree(json_t *root, json_t *elm, const char *path, struct tlvdb *t
             if (!pelm)
                 return 1;
 
-            // check childs element and add it if not found
+            // check children element and add it if not found
             json_t *chjson = json_path_get(pelm, "$.Childs");
             if (!chjson) {
                 json_object_set_new(pelm, "Childs", json_array());
@@ -323,7 +331,7 @@ bool ParamLoadFromJson(struct tlvdb *tlv) {
         return false;
     }
 
-    PrintAndLogEx(SUCCESS, "Load params: json(%zu) (%s)", json_array_size(root), _GREEN_("OK"));
+    PrintAndLogEx(SUCCESS, "Load params: json(%zu) ( %s )", json_array_size(root), _GREEN_("ok"));
 
     for (int i = 0; i < json_array_size(root); i++) {
         json_t *data, *jtag, *jlength, *jvalue;

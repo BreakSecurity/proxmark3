@@ -1,18 +1,24 @@
 //-----------------------------------------------------------------------------
-// Christian Herrmann, 2020
+// Copyright (C) Christian Herrmann, 2020
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // main code for hf_iceclass by Iceman
 //-----------------------------------------------------------------------------
 //
 // Created for the live streamed talk 'DEFCON 28 Wireless Village-Omikron and Iceman - Ghosting the PACS-man: New Tools and Techniques'
 // https://www.youtube.com/watch?v=ghiHXK4GEzE
-//
-//  I created a youtube video demostrating the HF_ICECLASS standalone mode
-//  https://youtu.be/w_1GnAscNIU
 //
 //
 
@@ -37,19 +43,21 @@
 #define ICE_STATE_ATTACK      2
 #define ICE_STATE_READER      3
 #define ICE_STATE_CONFIGCARD  4
-#define ICE_STATE_DUMP_SIM  5
+#define ICE_STATE_DUMP_SIM    5
+#define ICE_STATE_READ_SIM    6
 
-#define HF_ICLASS_NUM_MODES 6
+#define HF_ICLASS_NUM_MODES 7
 
 // ====================================================
 // Select which standalone function to be active.
-// 5 possiblities.  Uncomment the one you wanna use.
+// 5 possibilities.  Uncomment the one you wanna use.
 
 #define ICE_USE               ICE_STATE_FULLSIM
 //#define ICE_USE               ICE_STATE_ATTACK
 //#define ICE_USE               ICE_STATE_READER
 //#define ICE_USE               ICE_STATE_CONFIGCARD
 //#define ICE_USE               ICE_STATE_DUMP_SIM
+//#define ICE_USE               ICE_STATE_READ_SIM
 
 // ====================================================
 
@@ -243,7 +251,7 @@ static int reader_attack_mode(void) {
 
         bool success = (mac_response_len == MAC_RESPONSES_SIZE);
         uint8_t num_mac = (mac_response_len >> 4);
-        Dbprintf("%u out of %d MAC obtained [%s]", num_mac, NUM_CSNS, (success) ? _GREEN_("ok") : _RED_("fail"));
+        Dbprintf("%u out of %d MAC obtained ( %s )", num_mac, NUM_CSNS, (success) ? _GREEN_("ok") : _RED_("fail"));
 
         size_t dumplen = NUM_CSNS * 24;
 
@@ -316,6 +324,7 @@ static int reader_dump_mode(void) {
             .use_credit_key = false,
             .do_auth = true,
             .send_reply = false,
+            .shallow_mod = false,
         };
         memcpy(auth.key, legacy_aa1_key, sizeof(auth.key));
 
@@ -327,7 +336,7 @@ static int reader_dump_mode(void) {
 
         // select tag.
         uint32_t eof_time = 0;
-        bool res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time);
+        bool res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time, false);
         if (res == false) {
             switch_off();
             continue;
@@ -376,7 +385,7 @@ static int reader_dump_mode(void) {
 
         // main read loop
         for (uint16_t i = start_block; i <= app1_limit; i++) {
-            if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time)) {
+            if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time, false)) {
                 dumped++;
             }
         }
@@ -388,7 +397,7 @@ static int reader_dump_mode(void) {
             auth.use_credit_key = true;
             memcpy(auth.key, aa2_key, sizeof(auth.key));
 
-            res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time);
+            res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time, false);
             if (res) {
 
                 // sanity check of CSN.
@@ -402,7 +411,7 @@ static int reader_dump_mode(void) {
                     start_time = eof_time + DELAY_ICLASS_VICC_TO_VCD_READER;
 
                     for (uint16_t i = app1_limit + 1; i <= app2_limit; i++) {
-                        if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time)) {
+                        if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time, false)) {
                             dumped++;
                         }
                     }
@@ -452,6 +461,7 @@ static int dump_sim_mode(void) {
             .use_credit_key = false,
             .do_auth = true,
             .send_reply = false,
+            .shallow_mod = false,
         };
         memcpy(auth.key, legacy_aa1_key, sizeof(auth.key));
 
@@ -463,7 +473,7 @@ static int dump_sim_mode(void) {
 
         // select tag.
         uint32_t eof_time = 0;
-        bool res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time);
+        bool res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time, false);
         if (res == false) {
             switch_off();
             continue;
@@ -512,7 +522,7 @@ static int dump_sim_mode(void) {
 
         // main read loop
         for (uint16_t i = start_block; i <= app1_limit; i++) {
-            if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time)) {
+            if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time, false)) {
                 dumped++;
             }
         }
@@ -524,7 +534,7 @@ static int dump_sim_mode(void) {
             auth.use_credit_key = true;
             memcpy(auth.key, aa2_key, sizeof(auth.key));
 
-            res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time);
+            res = select_iclass_tag(hdr, auth.use_credit_key, &eof_time, false);
             if (res) {
 
                 // sanity check of CSN.
@@ -538,7 +548,7 @@ static int dump_sim_mode(void) {
                     start_time = eof_time + DELAY_ICLASS_VICC_TO_VCD_READER;
 
                     for (uint16_t i = app1_limit + 1; i <= app2_limit; i++) {
-                        if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time)) {
+                        if (iclass_read_block(i, card_data + (8 * i), &start_time, &eof_time, false)) {
                             dumped++;
                         }
                     }
@@ -627,7 +637,7 @@ void RunMod(void) {
         mode = bb[0];
     }
 
-    FpgaDownloadAndGo(FPGA_BITSTREAM_HF);
+    FpgaDownloadAndGo(FPGA_BITSTREAM_HF_15);
     BigBuf_Clear_ext(false);
 
     StandAloneMode();
@@ -711,6 +721,16 @@ void RunMod(void) {
 
                 mode = ICE_STATE_NONE;
                 break;
+            }
+            case ICE_STATE_READ_SIM: {
+                DbpString("-=[ enter " _CYAN_("`read & sim`") " mode, read cards, then sim after button press ]=-");
+                DbpString("Entering reader dump mode");
+                reader_dump_mode();
+                SpinDelay(1200); // debounce button press
+                DbpString("Entering fullsim mode");
+                fullsim_mode();
+                DbpString("Exiting fullsim mode");
+                LEDsoff();
             }
         }
     }

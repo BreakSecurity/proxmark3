@@ -1,9 +1,18 @@
 //-----------------------------------------------------------------------------
-// tharexde, 2021
+// Copyright (C) tharexde, 2021
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // main code for EM4x50 simulator and collector aka THAREXDE
 //-----------------------------------------------------------------------------
@@ -70,8 +79,6 @@
 #define LF_EM4X50_LOGFILE_COLLECT       "lf_em4x50_collect.log"
 #define MAX_NO_PWDS_TO_SAVE             50
 
-uint32_t gPassword;
-
 static void LoadDataInstructions(const char *inputfile) {
     Dbprintf("");
     Dbprintf("To load datafile to flash and display it:");
@@ -128,11 +135,10 @@ static void append(const char *filename, uint8_t *entry, size_t entry_len) {
 }
 
 static void save_pwds(uint32_t *pwdlist, size_t no_pwd) {
-    uint8_t entry[10] = {0};
-
     if (no_pwd > 0) {
         Dbprintf("");
         for (int i = 0; i < no_pwd; i++) {
+            uint8_t entry[10] = {0};
             sprintf((char *)entry, "%08"PRIx32"\n", pwdlist[i]);
             append(LF_EM4X50_LOGFILE_SIM, entry, strlen((char *)entry));
             Dbprintf("received password: %08"PRIx32"", pwdlist[i]);
@@ -205,9 +211,9 @@ void RunMod(void) {
                 }
 
                 LED_D_OFF();
-                gLogin = false;
-                gPassword = reflect32(tag[0]);
-                gWritePasswordProcess = false;
+                g_Login = false;
+                g_Password = reflect32(tag[0]);
+                g_WritePasswordProcess = false;
                 command = EM4X50_COMMAND_STANDARD_READ;
                 no_pwd = 0;
                 memset(pwdlist, 0, sizeof(pwdlist));
@@ -222,22 +228,22 @@ void RunMod(void) {
                 SpinDelay(200);
             }
 
-            em4x50_handle_commands(&command, tag);
+            em4x50_handle_commands(&command, tag, true);
 
             // check if new password was found
-            if (gPassword != reflect32(tag[EM4X50_DEVICE_PASSWORD])) {
+            if (g_Password != reflect32(tag[EM4X50_DEVICE_PASSWORD])) {
                 if (no_pwd < MAX_NO_PWDS_TO_SAVE) {
-                    pwdlist[no_pwd] = gPassword;
+                    pwdlist[no_pwd] = g_Password;
                     no_pwd++;
                 }
-                gPassword = reflect32(tag[EM4X50_DEVICE_PASSWORD]);
+                g_Password = reflect32(tag[EM4X50_DEVICE_PASSWORD]);
             }
 
             // if timeout (e.g. no reader field) continue with standard read
             // mode and reset former authentication
             if (command == PM3_ETIMEOUT) {
                 command = EM4X50_COMMAND_STANDARD_READ;
-                gLogin = false;
+                g_Login = false;
                 LED_D_OFF();
             }
 

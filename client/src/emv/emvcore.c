@@ -1,21 +1,27 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2017 Merlok
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // EMV core functions
 //-----------------------------------------------------------------------------
 
 #include "emvcore.h"
-
 #include <string.h>
-
-#include "commonutil.h"  // ARRAYLEN
-#include "comms.h"       // DropField
+#include "commonutil.h"     // ARRAYLEN
+#include "comms.h"          // DropField
 #include "cmdparser.h"
-#include "cmdsmartcard.h" // ExchangeAPDUSC
+#include "cmdsmartcard.h"   // ExchangeAPDUSC
 #include "ui.h"
 #include "cmdhf14a.h"
 #include "cmdhf14b.h"
@@ -23,6 +29,7 @@
 #include "emv_tags.h"
 #include "emvjson.h"
 #include "util_posix.h"
+#include "protocols.h"      // ISO7816 APDU return codes
 
 // Got from here. Thanks!
 // https://eftlab.co.uk/index.php/site-map/knowledge-base/211-emv-aid-rid-pix
@@ -41,9 +48,9 @@ const char *TransactionTypeStr[] = {
 typedef struct {
     enum CardPSVendor vendor;
     const char *aid;
-} TAIDList;
+} AIDList_t;
 
-static const TAIDList AIDlist [] = {
+static const AIDList_t AIDlist [] = {
     // Visa International
     { CV_VISA, "A00000000305076010" },           // VISA ELO Credit
     { CV_VISA, "A0000000031010" },               // VISA Debit/Credit (Classic)
@@ -129,6 +136,7 @@ static const TAIDList AIDlist [] = {
     { CV_OTHER, "D5280050218002" },              // The Netherlands - ? - (Netherlands)
     { CV_OTHER, "D5780000021010" },              // Bankaxept    Norway  Bankaxept   Norwegian domestic debit card
     { CV_OTHER, "F0000000030001" },              // BRADESCO - Brazilian Bank Banco Bradesco
+    { CV_OTHER, "A0000008381010" },              // SL Resekort - Swedish domestic transportation card with payment
 };
 
 enum CardPSVendor GetCardPSVendor(uint8_t *AID, size_t AIDlen) {
@@ -169,7 +177,7 @@ bool TLVPrintFromBuffer(uint8_t *data, int datalen) {
 }
 
 void TLVPrintFromTLVLev(struct tlvdb *tlv, int level) {
-    if (!tlv)
+    if (tlv == NULL)
         return;
 
     tlvdb_visit(tlv, emv_print_cb, NULL, level);
@@ -185,17 +193,18 @@ void TLVPrintAIDlistFromSelectTLV(struct tlvdb *tlv) {
     PrintAndLogEx(INFO, "|------------------+--------+-------------------------|");
 
     struct tlvdb *ttmp = tlvdb_find(tlv, 0x6f);
-    if (!ttmp)
+    if (ttmp == NULL)
         PrintAndLogEx(INFO, "|                         none                        |");
 
     while (ttmp) {
         const struct tlv *tgAID = tlvdb_get_inchild(ttmp, 0x84, NULL);
         const struct tlv *tgName = tlvdb_get_inchild(ttmp, 0x50, NULL);
         const struct tlv *tgPrio = tlvdb_get_inchild(ttmp, 0x87, NULL);
-        if (!tgAID)
+        if (!tgAID) {
             break;
+        }
         PrintAndLogEx(INFO, "| %s|   %s  | %s|",
-                      sprint_hex_inrow_ex(tgAID->value, tgAID->len, 17),
+                      sprint_hex_inrow_ex(tgAID->value, tgAID->len, 16),
                       (tgPrio) ? sprint_hex(tgPrio->value, 1) : "   ",
                       (tgName) ? sprint_ascii_ex(tgName->value, tgName->len, 24) : "                        ");
 
@@ -215,7 +224,7 @@ struct tlvdb *GetPANFromTrack2(const struct tlv *track2) {
         return NULL;
 
     for (int i = 0; i < track2->len; ++i, tmp += 2)
-        sprintf(tmp, "%02x", (unsigned int)track2->value[i]);
+        snprintf(tmp, sizeof(track2Hex) - (tmp - track2Hex), "%02x", (unsigned int)track2->value[i]);
 
     int posD = strchr(track2Hex, 'd') - track2Hex;
     if (posD < 1)
@@ -244,7 +253,7 @@ struct tlvdb *GetdCVVRawFromTrack2(const struct tlv *track2) {
         return NULL;
 
     for (int i = 0; i < track2->len; ++i, tmp += 2)
-        sprintf(tmp, "%02x", (unsigned int)track2->value[i]);
+        snprintf(tmp, sizeof(track2Hex) - (tmp - track2Hex), "%02x", (unsigned int)track2->value[i]);
 
     int posD = strchr(track2Hex, 'd') - track2Hex;
     if (posD < 1)
@@ -265,7 +274,7 @@ struct tlvdb *GetdCVVRawFromTrack2(const struct tlv *track2) {
     return tlvdb_fixed(0x02, dCVVlen, dCVV);
 }
 
-static int EMVExchangeEx(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFieldON, sAPDU apdu, bool IncludeLe, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
+static int EMVExchangeEx(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFieldON, sAPDU_t apdu, bool IncludeLe, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
     int res = Iso7816ExchangeEx(channel, ActivateField, LeaveFieldON, apdu, IncludeLe, 0, Result, MaxResultLen, ResultLen, sw);
     // add to tlv tree
     if ((res == PM3_SUCCESS) && tlv) {
@@ -275,7 +284,7 @@ static int EMVExchangeEx(Iso7816CommandChannel channel, bool ActivateField, bool
     return res;
 }
 
-int EMVExchange(Iso7816CommandChannel channel, bool LeaveFieldON, sAPDU apdu, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
+int EMVExchange(Iso7816CommandChannel channel, bool LeaveFieldON, sAPDU_t apdu, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
     int res = Iso7816Exchange(channel, LeaveFieldON, apdu, Result, MaxResultLen, ResultLen, sw);
     // add to tlv tree
     if ((res == PM3_SUCCESS) && tlv) {
@@ -329,7 +338,6 @@ static int EMVSelectWithRetry(Iso7816CommandChannel channel, bool ActivateField,
                     return 1;
                 }
 
-                retrycnt = 0;
                 PrintAndLogEx(FAILED, "Retry failed [%s]. Skipped...", sprint_hex_inrow(AID, AIDLen));
                 return res;
             }
@@ -374,8 +382,6 @@ static int EMVCheckAID(Iso7816CommandChannel channel, bool decodeTLV, struct tlv
 int EMVSearchPSE(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFieldON, uint8_t PSENum, bool decodeTLV, struct tlvdb *tlv) {
     uint8_t data[APDU_RES_LEN] = {0};
     size_t datalen = 0;
-    uint8_t sfidata[0x11][APDU_RES_LEN];
-    size_t sfidatalen[0x11] = {0};
     uint16_t sw = 0;
     int res;
     const char *PSE_or_PPSE = PSENum == 1 ? "PSE" : "PPSE";
@@ -384,18 +390,19 @@ int EMVSearchPSE(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFi
     res = EMVSelectPSE(channel, ActivateField, true, PSENum, data, sizeof(data), &datalen, &sw);
 
     if (!res) {
-        if (sw != 0x9000) {
+        if (sw != ISO7816_OK) {
             PrintAndLogEx(FAILED, "Select PSE error. APDU error: %04x.", sw);
             return 1;
         }
 
-        bool fileFound = false;
-
         struct tlvdb *t = tlvdb_parse_multi(data, datalen);
         if (t) {
+            bool fileFound = false;
             // PSE/PPSE with SFI
             struct tlvdb *tsfi = tlvdb_find_path(t, (tlv_tag_t[]) {0x6f, 0xa5, 0x88, 0x00});
             if (tsfi) {
+                uint8_t sfidata[0x11][APDU_RES_LEN];
+                size_t sfidatalen[0x11] = {0};
                 uint8_t sfin = 0;
                 tlv_get_uint8(tlvdb_get_tlv(tsfi), &sfin);
                 PrintAndLogEx(INFO, "* PPSE get SFI: 0x%02x.", sfin);
@@ -412,7 +419,7 @@ int EMVSearchPSE(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFi
                     }
 
                     // error catch!
-                    if (sw != 0x9000) {
+                    if (sw != ISO7816_OK) {
                         sfidatalen[ui] = 0;
                         PrintAndLogEx(FAILED, "PPSE get Error. APDU error: %04x.", sw);
                         break;
@@ -466,14 +473,13 @@ int EMVSearchPSE(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFi
     return res;
 }
 
-int EMVSearch(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFieldON, bool decodeTLV, struct tlvdb *tlv) {
+int EMVSearch(Iso7816CommandChannel channel, bool ActivateField, bool LeaveFieldON, bool decodeTLV, struct tlvdb *tlv, bool verbose) {
     uint8_t aidbuf[APDU_AID_LEN] = {0};
     int aidlen = 0;
     uint8_t data[APDU_RES_LEN] = {0};
     size_t datalen = 0;
     uint16_t sw = 0;
 
-    int res = 0;
     int retrycnt = 0;
     for (int i = 0; i < ARRAYLEN(AIDlist); i ++) {
 
@@ -483,7 +489,7 @@ int EMVSearch(Iso7816CommandChannel channel, bool ActivateField, bool LeaveField
         }
 
         param_gethex_to_eol(AIDlist[i].aid, 0, aidbuf, sizeof(aidbuf), &aidlen);
-        res = EMVSelect(channel, (i == 0) ? ActivateField : false, true, aidbuf, aidlen, data, sizeof(data), &datalen, &sw, tlv);
+        int res = EMVSelect(channel, (i == 0) ? ActivateField : false, true, aidbuf, aidlen, data, sizeof(data), &datalen, &sw, tlv);
         // retry if error and not returned sw error
         if (res && res != 5) {
             if (++retrycnt < 3) {
@@ -491,15 +497,19 @@ int EMVSearch(Iso7816CommandChannel channel, bool ActivateField, bool LeaveField
             } else {
                 // (1) - card select error, (4) reply timeout, (200) - result length = 0
                 if (res == 1 || res == 4 || res == 200) {
-                    if (!LeaveFieldON)
+                    if (LeaveFieldON == false)
                         DropFieldEx(channel);
 
-                    PrintAndLogEx(WARNING, "exiting...");
+                    if (verbose) {
+                        PrintAndLogEx(WARNING, "exiting...");
+                    }
                     return 1;
                 }
 
                 retrycnt = 0;
-                PrintAndLogEx(FAILED, "Retry failed [%s]. Skipped...", AIDlist[i].aid);
+                if (verbose) {
+                    PrintAndLogEx(FAILED, "Retry failed [%s]. Skipped...", AIDlist[i].aid);
+                }
             }
             continue;
         }
@@ -517,8 +527,9 @@ int EMVSearch(Iso7816CommandChannel channel, bool ActivateField, bool LeaveField
         }
     }
 
-    if (!LeaveFieldON)
+    if (LeaveFieldON == false) {
         DropFieldEx(channel);
+    }
 
     return 0;
 }
@@ -563,40 +574,44 @@ int EMVSelectApplication(struct tlvdb *tlv, uint8_t *AID, size_t *AIDlen) {
 }
 
 int EMVGPO(Iso7816CommandChannel channel, bool LeaveFieldON, uint8_t *PDOL, size_t PDOLLen, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
-    return EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x80, 0xa8, 0x00, 0x00, PDOLLen, PDOL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
+    return EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x80, 0xa8, 0x00, 0x00, PDOLLen, PDOL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
 }
 
 int EMVReadRecord(Iso7816CommandChannel channel, bool LeaveFieldON, uint8_t SFI, uint8_t SFIrec, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
-    int res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x00, 0xb2, SFIrec, (SFI << 3) | 0x04, 0, NULL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
+    int res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x00, 0xb2, SFIrec, (SFI << 3) | 0x04, 0, NULL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
     if (*sw == 0x6700 || *sw == 0x6f00) {
         PrintAndLogEx(INFO, ">>> trying to reissue command without Le...");
-        res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x00, 0xb2, SFIrec, (SFI << 3) | 0x04, 0, NULL}, false, Result, MaxResultLen, ResultLen, sw, tlv);
+        res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x00, 0xb2, SFIrec, (SFI << 3) | 0x04, 0, NULL}, false, Result, MaxResultLen, ResultLen, sw, tlv);
     }
     return res;
 }
 
+int EMVGetData(Iso7816CommandChannel channel, bool LeaveFieldON, uint16_t foo, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
+    return EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x80, 0xCA, ((foo >> 8) & 0xFF), (foo & 0xFF), 0, NULL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
+}
+
 int EMVAC(Iso7816CommandChannel channel, bool LeaveFieldON, uint8_t RefControl, uint8_t *CDOL, size_t CDOLLen, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
-    return EMVExchange(channel, LeaveFieldON, (sAPDU) {0x80, 0xae, RefControl, 0x00, CDOLLen, CDOL}, Result, MaxResultLen, ResultLen, sw, tlv);
+    return EMVExchange(channel, LeaveFieldON, (sAPDU_t) {0x80, 0xae, RefControl, 0x00, CDOLLen, CDOL}, Result, MaxResultLen, ResultLen, sw, tlv);
 }
 
 int EMVGenerateChallenge(Iso7816CommandChannel channel, bool LeaveFieldON, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
-    int res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x00, 0x84, 0x00, 0x00, 0x00, NULL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
+    int res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x00, 0x84, 0x00, 0x00, 0x00, NULL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
     if (*sw == 0x6700 || *sw == 0x6f00) {
         PrintAndLogEx(INFO, ">>> trying to reissue command without Le...");
-        res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x00, 0x84, 0x00, 0x00, 0x00, NULL}, false, Result, MaxResultLen, ResultLen, sw, tlv);
+        res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x00, 0x84, 0x00, 0x00, 0x00, NULL}, false, Result, MaxResultLen, ResultLen, sw, tlv);
     }
     return res;
 }
 
 int EMVInternalAuthenticate(Iso7816CommandChannel channel, bool LeaveFieldON, uint8_t *DDOL, size_t DDOLLen, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
-    return EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x00, 0x88, 0x00, 0x00, DDOLLen, DDOL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
+    return EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x00, 0x88, 0x00, 0x00, DDOLLen, DDOL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
 }
 
 int MSCComputeCryptoChecksum(Iso7816CommandChannel channel, bool LeaveFieldON, uint8_t *UDOL, uint8_t UDOLlen, uint8_t *Result, size_t MaxResultLen, size_t *ResultLen, uint16_t *sw, struct tlvdb *tlv) {
-    int res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x80, 0x2a, 0x8e, 0x80, UDOLlen, UDOL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
+    int res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x80, 0x2a, 0x8e, 0x80, UDOLlen, UDOL}, true, Result, MaxResultLen, ResultLen, sw, tlv);
     if (*sw == 0x6700 || *sw == 0x6f00) {
         PrintAndLogEx(INFO, ">>> trying to reissue command without Le...");
-        res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU) {0x80, 0x2a, 0x8e, 0x80, UDOLlen, UDOL}, false, Result, MaxResultLen, ResultLen, sw, tlv);
+        res = EMVExchangeEx(channel, false, LeaveFieldON, (sAPDU_t) {0x80, 0x2a, 0x8e, 0x80, UDOLlen, UDOL}, false, Result, MaxResultLen, ResultLen, sw, tlv);
     }
     return res;
 }
@@ -645,7 +660,7 @@ int trSDA(struct tlvdb *tlv) {
     struct tlvdb *dac_db = emv_pki_recover_dac(issuer_pk, tlv, sda_tlv);
     if (dac_db) {
         const struct tlv *dac_tlv = tlvdb_get(dac_db, 0x9f45, NULL);
-        PrintAndLogEx(INFO, "SDA verified (%s) (Data Authentication Code: %02hhx:%02hhx)", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
+        PrintAndLogEx(INFO, "SDA verified ( %s ) (Data Authentication Code: %02hhx:%02hhx)", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
         tlvdb_add(tlv, dac_db);
     } else {
         emv_pk_free(issuer_pk);
@@ -663,10 +678,6 @@ static const unsigned char default_ddol_value[] = {0x9f, 0x37, 0x04};
 static struct tlv default_ddol_tlv = {.tag = 0x9f49, .len = 3, .value = default_ddol_value };
 
 int trDDA(Iso7816CommandChannel channel, bool decodeTLV, struct tlvdb *tlv) {
-    uint8_t buf[APDU_RES_LEN] = {0};
-    size_t len = 0;
-    uint16_t sw = 0;
-
     struct emv_pk *pk = get_ca_pk(tlv);
     if (!pk) {
         PrintAndLogEx(ERR, "Error: Key not found, exiting");
@@ -761,10 +772,13 @@ int trDDA(Iso7816CommandChannel channel, bool decodeTLV, struct tlvdb *tlv) {
         tlvdb_free(atc_db);
 
     } else {
+        uint8_t buf[APDU_RES_LEN] = {0};
+        size_t len = 0;
+        uint16_t sw = 0;
         struct tlvdb *dac_db = emv_pki_recover_dac(issuer_pk, tlv, sda_tlv);
         if (dac_db) {
             const struct tlv *dac_tlv = tlvdb_get(dac_db, 0x9f45, NULL);
-            PrintAndLogEx(INFO, "SDAD verified (%s) (Data Authentication Code: %02hhx:%02hhx)\n", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
+            PrintAndLogEx(INFO, "SDAD verified ( %s ) (Data Authentication Code: %02hhx:%02hhx)\n", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
             tlvdb_add(tlv, dac_db);
         } else {
             PrintAndLogEx(ERR, "Error: SSAD verify error");
@@ -923,7 +937,7 @@ int trCDA(struct tlvdb *tlv, struct tlvdb *ac_tlv, struct tlv *pdol_data_tlv, st
         struct tlvdb *dac_db = emv_pki_recover_dac(issuer_pk, tlv, sda_tlv);
         if (dac_db) {
             const struct tlv *dac_tlv = tlvdb_get(dac_db, 0x9f45, NULL);
-            PrintAndLogEx(SUCCESS, "Signed Static Application Data (SSAD) verified (%s) (%02hhx:%02hhx)", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
+            PrintAndLogEx(SUCCESS, "Signed Static Application Data (SSAD) verified ( %s ) (%02hhx:%02hhx)", _GREEN_("ok"), dac_tlv->value[0], dac_tlv->value[1]);
             tlvdb_add(tlv, dac_db);
         } else {
             PrintAndLogEx(ERR, "Error: Signed Static Application Data (SSAD) verify error");
@@ -943,7 +957,7 @@ int trCDA(struct tlvdb *tlv, struct tlvdb *ac_tlv, struct tlv *pdol_data_tlv, st
     if (idn_db) {
         const struct tlv *idn_tlv = tlvdb_get(idn_db, 0x9f4c, NULL);
         PrintAndLogEx(INFO, "IDN (ICC Dynamic Number) [%zu] %s", idn_tlv->len, sprint_hex_inrow(idn_tlv->value, idn_tlv->len));
-        PrintAndLogEx(SUCCESS, "CDA verified (%s)", _GREEN_("ok"));
+        PrintAndLogEx(SUCCESS, "CDA verified ( %s )", _GREEN_("ok"));
         tlvdb_add(tlv, idn_db);
     } else {
         PrintAndLogEx(ERR, "ERROR: CDA verify error");

@@ -1,18 +1,29 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// piwi, Feb 2019
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 
 module hi_get_trace(
-       ck_1356megb,
-       adc_d, trace_enable, major_mode,
-       ssp_frame, ssp_din, ssp_clk
+    input ck_1356megb,
+    input [7:0] adc_d,
+    input trace_enable,
+    input [2:0] major_mode,
+
+    output ssp_din,
+    output reg ssp_frame,
+    output reg ssp_clk
 );
-    input ck_1356megb;
-    input [7:0] adc_d;
-    input trace_enable;
-    input [2:0] major_mode;
-    output ssp_frame, ssp_din, ssp_clk;
 
 // clock divider
 reg [6:0] clock_cnt;
@@ -77,9 +88,9 @@ begin
                     write_enable2 <= 1'b0;
                 end
                 else
-                                begin
+                begin
                     addr <= addr + 1;
-                                end
+                end
             end
         end
         else
@@ -94,12 +105,11 @@ begin
         write_enable1 <= 1'b0;
         write_enable2 <= 1'b0;
         if (previous_major_mode != `FPGA_MAJOR_MODE_OFF && previous_major_mode != `FPGA_MAJOR_MODE_HF_GET_TRACE) // just switched off
-                begin
+        begin
             start_addr <= addr;
-                end
+        end
     end
 end
-
 
 // (2+1)k RAM
 reg [7:0] D_out1, D_out2;
@@ -116,7 +126,7 @@ begin
     else
         D_out1 <= ram1[addr[10:0]];
     if (write_enable2)
-begin
+    begin
         ram2[addr[9:0]] <= adc_d;
         D_out2 <= adc_d;
     end
@@ -124,10 +134,6 @@ begin
         D_out2 <= ram2[addr[9:0]];
 end
 
-
-// SSC communication to ARM
-reg ssp_clk;
-reg ssp_frame;
 reg [7:0] shift_out;
 
 always @(negedge ck_1356megb)
@@ -136,16 +142,16 @@ begin
     begin
         if (clock_cnt[6:4] == 3'd0)    // either load new value
         begin
-                    if (addr[11] == 1'b0)
-                        shift_out <= D_out1;
-                    else
-                        shift_out <= D_out2;
+            if (addr[11] == 1'b0)
+                shift_out <= D_out1;
+            else
+                shift_out <= D_out2;
         end
         else
-                begin
-                          // or shift left
-                    shift_out[7:1] <= shift_out[6:0];
-                end
+        begin
+            // or shift left
+            shift_out[7:1] <= shift_out[6:0];
+        end
     end
 
     ssp_clk <= ~clock_cnt[3];       // ssp_clk frequency = 13,56MHz / 16 = 847,5 kHz

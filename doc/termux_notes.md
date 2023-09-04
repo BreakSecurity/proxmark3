@@ -1,42 +1,40 @@
-<a id="top"></a>
 # Proxmark 3 on Android
+<a id="top"></a>
+
 ## Table of Contents
   * [ Requirements ](#requirements)
   * [ Notes ](#notes)
-  * [ Tested setups ](#tested-setups)
-    * OnePlus 5 (arm64, USB-C)
-    * Nexus 5X (arm64, USB-C)
-    * Xiaomi Mi Mix 2S (arm64, USB-C)
-    * OnePlus 5T (arm64, USB-C)
-    * Samsung Galaxy Tab S2 (arm64, MicroUSB)
   * [ Setup ](#setup)
     * [ Setting up Termux ](#setting-up-termux)
     * [ Install Proxmark3 package ](#install-proxmark3-package)
   * [ PC-like method ](#pc-like-method)
     * [ Specific requirements ](#specific-requirements)
     * [ USB_ACM ](#usb_acm)
-    * [ Enable the driver ](#enable-the-driver)
-    * [ Building the kernel ](#building-the-kernel)
-    * [ Flashing the kernel ](#flashing-the-kernel)
-    * [ Testing ](#testing)
-    * [ Troubleshooting ](#troubleshooting)
+      * [ Enable the driver ](#enable-the-driver)
+      * [ Building the kernel ](#building-the-kernel)
+      * [ Flashing the kernel ](#flashing-the-kernel)
+      * [ Testing ](#testing)
+      * [ Troubleshooting ](#troubleshooting)
   * [ TCP bridge method ](#tcp-bridge-method)
     * [ USB connection ](#usb-connection)
-    * [ USB-UART bridge application ](#usb-uart-bridge-application)
-    * [ Setting up usb socket ](#setting-up-usb-socket)
+      * [ USB-UART bridge application ](#usb-uart-bridge-application)
     * [ Bluetooth connection ](#bluetooth-connection)
-    * [ BT-UART bridge application ](#bt-uart-bridge-application)
-    * [ Setting up bt socket ](#setting-up-bt-socket)
-    * [ Termux connection ](#termux-connection)
-
+      * [ BT-UART bridge application ](#bt-uart-bridge-application)
+    * [ TCP connection ](#tcp-connection)
+    * [Troubleshooting](#troubleshooting-1)
+      * [BTADDON Missing in Firmware of PM3](#btaddon-missing-in-firmware-of-pm3)
+  * [Compiling and Flashing a Proxmark3 Firmware from non-root Android](#compiling-and-flashing-a-proxmark3-firmware-from-non-root-android)
+    * [Compiling the Proxmark3 Firmware](#compiling-the-proxmark3-firmware)
+    * [Flashing the Proxmark3 Firmware](#flashing-the-proxmark3-firmware)
 ## Requirements
 ^[Top](#top)
 
 - Android phone
-- [Termux](https://play.google.com/store/apps/details?id=com.termux)
-- Proxmark3 RDV4 (https://www.proxmark.com/proxmark-3-hardware/proxmark-3-rdv4)
-- Blueshark Standalone Module (Bluetooth ONLY) (https://www.proxmark.com/proxmark-news/proxmark3-blueshark-bluetooth-released)
-- Proxmark with BTADDON compiled Firmware (Bluetooth ONLY) (https://github.com/RfidResearchGroup/proxmark3/blob/master/doc/md/Use_of_Proxmark/4_Advanced-compilation-parameters.md#platform_extras)
+- [F-Droid](https://f-droid.org/)
+- [Termux](https://f-droid.org/en/packages/com.termux/)
+- [Proxmark3 RDV4](https://www.proxmark.com/proxmark-3-hardware/proxmark-3-rdv4)
+- [Blueshark Standalone Module](https://www.proxmark.com/proxmark-news/proxmark3-blueshark-bluetooth-released) **(ONLY if using Bluetooth)**
+- [Proxmark with BTADDON compiled Firmware](https://github.com/RfidResearchGroup/proxmark3/blob/master/doc/md/Use_of_Proxmark/4_Advanced-compilation-parameters.md#platform_extras) **(ONLY if using Bluetooth)**
 
 
 ## Notes
@@ -45,45 +43,15 @@ From official Proxmark3 wiki:
  > In any case, you would need a USB-C to A or USB-OTG cable to connect Proxmark3 to your Android device. Some Android devices may not supply enough power (USB-OTG = 100mA), and need a USB Y-cable and external battery, otherwise they will get strange failures.
 ref : https://github.com/Proxmark/proxmark3/wiki/android
 
-## Tested setups
-^[Top](#top)
-
-- OnePlus 5 (arm64, USB-C)
-
-  - [OmniROM (Android 9)](https://www.omnirom.org/)
-  - [OmniROM kernel](https://www.omnirom.org/)
-  - [Magisk 19.3](https://github.com/topjohnwu/Magisk/)
-
-- Nexus 5X (arm64, USB-C)
-
-  - [LineageOS (Android 8.1)](https://download.lineageos.org/)
-  - [LineageOS kernel](https://download.lineageos.org/)
-  - [Magisk 19.3](https://github.com/topjohnwu/Magisk/)
-  
-- Xiaomi Mi Mix 2S (arm64, USB-C)
-  - [LineageOS (Android 9.0)](https://download.lineageos.org/)
-  - [Magisk 20.3](https://github.com/topjohnwu/Magisk/)
-  
-- OnePlus 5T (arm64, USB-C)
-  - [LineageOS (Android 9.0)](https://download.lineageos.org/)
-  - [Franko Kernel](https://franco-lnx.net/)
-  - [Magisk 20.3](https://github.com/topjohnwu/Magisk/)
-  
-- Samsung Galaxy Tab S2 (arm64, MicroUSB)
-  - [LineageOS (Android 9.0)](https://download.lineageos.org/)
-  - [LineageOS kernel](https://download.lineageos.org/)
-  - [Magisk 20.3](https://github.com/topjohnwu/Magisk/)
-
-
-
 ## Setup
 ^[Top](#top)
 
 ### Setting up Termux
 ^[Top](#top)
 
-Install [Termux](https://play.google.com/store/apps/details?id=com.termux) and start it
+Use [F-Droid](https://f-droid.org/) to install [Termux](https://f-droid.org/en/packages/com.termux/) and start it.
 
+It is recommended to use the F-Droid version of Termux as it will be the latest. The [Play Store version](https://play.google.com/store/apps/details?id=com.termux) is not maintained (as stated in the description: "Updates over Google Play [are] currently halted due to technical reasons").
 
 ### Install Proxmark3 package which follows tagged releases
 ^[Top](#top)
@@ -92,16 +60,16 @@ Run the following commands:
 ```
 pkg install proxmark3
 ```
-### Install Proxmark3 package which offers a more up to date version from git `master` branch
+### Optional: Install Proxmark3 package which offers a more up to date version from git `master` branch
 Run the following commands:
 ```
 pkg install proxmark3-git
 ```
 ### Optional: Building Proxmark3 client from source
 ```
-pkg install make clang readline libc++ git
+pkg install make clang readline libc++ git binutils
 git clone https://github.com/RfidResearchGroup/proxmark3.git
-cd proxmark
+cd proxmark3
 make clean && make client
 ```
 
@@ -142,7 +110,7 @@ If using a custom kernel, refer to the build instructions provided by its mainta
 
 You can flash the kernel however it suits you. On the tested device, this was achieved using [TWRP](https://twrp.me/), the most popular custom recovery
 
-### Testing
+#### Testing
 ^[Top](#top)
 
 Open Termux and start the Proxmark3 client:
@@ -151,7 +119,7 @@ tsudo proxmark3/client/proxmark3 /dev/ttyACM0
 ```
 Everything should work just like if it was your PC!
 
-### Troubleshooting
+#### Troubleshooting
 ^[Top](#top)
 
 - `dmesg | grep usb` - useful debug info
@@ -166,35 +134,37 @@ However, it is fully integrated with phone's network, so we need to talk to the 
 ### USB connection
 ^[Top](#top)
 
-### USB-UART Bridge Application
+#### USB-UART Bridge Application
 ^[Top](#top)
 
-Install [this free app](https://play.google.com/store/apps/details?id=com.hardcodedjoy.tcpuart) on the Play Store
-
-### Setting up usb socket
-^[Top](#top)
+Install [this free TCPUART app](https://play.google.com/store/apps/details?id=com.hardcodedjoy.tcpuart) on the Play Store
 
 The app lets you choose the baudrate. Default value (115 200 baud) is fine.
 Plug the PM3 in and click connect.
 Set the toggle in server mode and choose a random port not used by system (e.g. 4321) and start the server.
 
+Alternatively, use the [paid version of the BT/USB/TCP Bridge app](https://play.google.com/store/apps/details?id=masar.bluetoothbridge.pro) which includes USB bridge as well.
+
+In this app, select TCP server as 'Device A' and choose an unused port (e.g. 4321).
+Choose your registered PM3 device as 'Device B' -> 'Connect to USB device'.
+Ensure 'Retransmission' is set to 'both ways'.
+It is possible to record the config as autostart, cf 'Settings' -> 'Autostart setting'.
+
 ### Bluetooth connection
 ^[Top](#top)
 
-### BT-UART Bridge Application
+#### BT-UART Bridge Application
 ^[Top](#top)
 
 Install [this free app](https://play.google.com/store/apps/details?id=masar.bb) or [the paid version](https://play.google.com/store/apps/details?id=masar.bluetoothbridge.pro) (which includes usb bridge)
 
-### Setting up bt socket
-^[Top](#top)
-
 You need to pair the proxmark3 in the Android settings.
-In the app choose your registered PM3 device as 'device A'.
-Select TCP server as 'Device B' and choose an unused port (e.g. 4321).
+In the app, select TCP server as 'Device A' and choose an unused port (e.g. 4321).
+Choose your registered PM3 device as 'Device B' -> 'Connect to classic Bluetooth device'.
 Ensure 'Retransmission' is set to 'both ways'.
+It is possible to record the config as autostart, cf 'Settings' -> 'Autostart setting'.
 
-### Termux connection
+### TCP connection
 ^[Top](#top)
 
 Start a new session, then:
@@ -209,6 +179,7 @@ Alternatively, if you have made the client in the git repo:
 ^[Top](#top)
 
 #### BTADDON Missing in Firmware of PM3
+^[Top](#top)
 
 1. Phone and pm3 are connected, blue led is on and *not* blinking
 2. BTUART Tool TCP Server at Port 4321 
@@ -231,4 +202,55 @@ Solution:
 Make sure you have installed a firmware with BTADDON compiled. 
 See: https://github.com/RfidResearchGroup/proxmark3/blob/master/doc/md/Use_of_Proxmark/4_Advanced-compilation-parameters.md#platform_extras  
 
-ENJOY !
+## Compiling and Flashing a Proxmark3 Firmware from non-root Android
+
+READ ME:
+* If you can compile and flash your device from a PC, do it! It's probably much confortable than following this method.
+* Flashing is possible only via USB-UART, *not* via BT-UART
+* Avoid flashing the Bootloader from non-root Android as the connection is probably less stable than with pure USB and you don't want to brick your device...
+
+### Compiling the Proxmark3 Firmware
+
+Assuming we're using the Github repo sources as explained above.
+
+```
+pkg install make clang readline libc++ git binutils
+cd
+git clone https://github.com/RfidResearchGroup/proxmark3.git
+cd proxmark3
+make clean && make -j client
+```
+
+Termux doesn't have the ARM cross-compiler, so we'll install a Debian within Termux.
+
+```
+$ pkg install proot-distro
+$ proot-distro install debian
+$ proot-distro login debian --termux-home
+```
+At this point we should be on a Debian root prompt in the user directory. We install only the requirements to compile the Proxmark3 firmware.
+```
+# apt-get update
+# apt-get install -y --no-install-recommends make gcc g++ libc6-dev gcc-arm-none-eabi libnewlib-dev
+# cd proxmark3
+# make -j fullimage
+# exit
+```
+At this point we're back to the Termux prompt.
+
+### Flashing the Proxmark3 Firmware
+
+Plug the Proxmark3 while pressing the button, to enter into bootloader mode manually.
+
+Activate the USB-UART to TCP Bridge with one of the applications as explained above.
+
+```
+cd proxmark3
+./client/proxmark3 tcp:localhost:<chosenPort> --flash --image armsrc/obj/fullimage.elf
+```
+Once the Proxmark3 has rebooted, reconnect it to the bridge in the app.
+The freshly flashed device is now ready to be used.
+
+```
+./client/proxmark3 tcp:localhost:<chosenPort>
+```

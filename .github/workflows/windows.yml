@@ -24,6 +24,7 @@ jobs:
     env:
       PATH: C:/ProxSpace/msys2/mingw64/bin;C:/ProxSpace/msys2/usr/local/bin;C:/ProxSpace/msys2/usr/bin;C:/ProxSpace/msys2/bin
       MSYSTEM: MINGW64
+      PYTHONHOME: /mingw64
 
     steps:
       - name: ProxSpace download
@@ -47,7 +48,7 @@ jobs:
         working-directory: C:\ProxSpace
         run: ./runme64.bat -c "exit"
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: make clean
         run: make clean
@@ -71,7 +72,12 @@ jobs:
         run: make clean
 
       - name: Prepare cmake build folders
-        run: mkdir -p client/build
+        run: |
+          mkdir -p client/build
+          ln -s ../cmdscripts client/build/
+          ln -s ../luascripts client/build/
+          ln -s ../pyscripts client/build/
+          ln -s ../lualibs client/build/
 
       - name: Initiate cmake environment
         run: cmake -G"MSYS Makefiles" ..
@@ -92,9 +98,9 @@ jobs:
 
     steps:
       - name: WSL setup
-        uses: Vampire/setup-wsl@v1
+        uses: Vampire/setup-wsl@v2
         with:
-          distribution: Ubuntu-20.04
+          distribution: Ubuntu-22.04
           update: "true"
           additional-packages: git
             ca-certificates
@@ -104,6 +110,7 @@ jobs:
             gcc-arm-none-eabi
             libnewlib-dev
             libbz2-dev
+            liblz4-dev
             qtbase5-dev
             cmake
             libpython3-dev
@@ -111,6 +118,7 @@ jobs:
             python3-pip
             python3-dev
             libpython3-all-dev
+            libssl-dev
 
       - name: Install Python dependencies
         run: |
@@ -127,7 +135,7 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.eol lf
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: make clean
         run: make clean
@@ -151,7 +159,12 @@ jobs:
         run: make clean
 
       - name: Prepare cmake build folders
-        run: mkdir -p client/build
+        run: |
+          mkdir -p client/build
+          ln -s ../cmdscripts client/build/
+          ln -s ../luascripts client/build/
+          ln -s ../pyscripts client/build/
+          ln -s ../lualibs client/build/
 
       - name: Initiate cmake environment
         run: cmake ..

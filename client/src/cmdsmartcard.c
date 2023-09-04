@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2018 iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Proxmark3 RDV40 Smartcard module commands
 //-----------------------------------------------------------------------------
@@ -23,6 +31,7 @@
 #include "fileutils.h"
 #include "crc16.h"              // crc
 #include "cliparser.h"          // cliparsing
+#include "atrs.h"               // ATR lookup
 
 static int CmdHelp(const char *Cmd);
 
@@ -58,7 +67,7 @@ out:
     return retval;
 }
 
-static uint8_t GetATRTA1(uint8_t *atr, size_t atrlen) {
+static uint8_t GetATRTA1(const uint8_t *atr, size_t atrlen) {
     if (atrlen > 2) {
         uint8_t T0 = atr[1];
         if (T0 & 0x10)
@@ -68,7 +77,7 @@ static uint8_t GetATRTA1(uint8_t *atr, size_t atrlen) {
     return 0x11; // default value is 0x11, corresponding to fmax=5 MHz, Fi=372, Di=1.
 }
 
-int DiArray[] = {
+static int DiArray[] = {
     0,  // b0000 RFU
     1,  // b0001
     2,
@@ -87,7 +96,7 @@ int DiArray[] = {
     0    // b1111 RFU
 };
 
-int FiArray[] = {
+static int FiArray[] = {
     372,    // b0000 Historical note: in ISO/IEC 7816-3:1989, this was assigned to cards with internal clock
     372,    // b0001
     558,    // b0010
@@ -106,7 +115,7 @@ int FiArray[] = {
     0       // b1111 RFU
 };
 
-float FArray[] = {
+static float FArray[] = {
     4,    // b0000 Historical note: in ISO/IEC 7816-3:1989, this was assigned to cards with internal clock
     5,    // b0001
     6,    // b0010
@@ -149,23 +158,23 @@ static void PrintATR(uint8_t *atr, size_t atrlen) {
     bool protocol_T15_present = false;
 
     if (T0 & 0x10) {
-        PrintAndLogEx(INFO, "\t- TA1 (Maximum clock frequency, proposed bit duration) [ 0x%02x ]", atr[2 + T1len]);
+        PrintAndLogEx(INFO, "    - TA1 (Maximum clock frequency, proposed bit duration) [ 0x%02x ]", atr[2 + T1len]);
         T1len++;
     }
 
     if (T0 & 0x20) {
-        PrintAndLogEx(INFO, "\t- TB1 (Deprecated: VPP requirements) [ 0x%02x ]", atr[2 + T1len]);
+        PrintAndLogEx(INFO, "    - TB1 (Deprecated: VPP requirements) [ 0x%02x ]", atr[2 + T1len]);
         T1len++;
     }
 
     if (T0 & 0x40) {
-        PrintAndLogEx(INFO, "\t- TC1 (Extra delay between bytes required by card) [ 0x%02x ]", atr[2 + T1len]);
+        PrintAndLogEx(INFO, "    - TC1 (Extra delay between bytes required by card) [ 0x%02x ]", atr[2 + T1len]);
         T1len++;
     }
 
     if (T0 & 0x80) {
         uint8_t TD1 = atr[2 + T1len];
-        PrintAndLogEx(INFO, "\t- TD1 (First offered transmission protocol, presence of TA2..TD2) [ 0x%02x ] Protocol T%d", TD1, TD1 & 0x0f);
+        PrintAndLogEx(INFO, "    - TD1 (First offered transmission protocol, presence of TA2..TD2) [ 0x%02x ] Protocol T%d", TD1, TD1 & 0x0f);
         protocol_T0_present = false;
         if ((TD1 & 0x0f) == 0) {
             protocol_T0_present = true;
@@ -177,20 +186,20 @@ static void PrintATR(uint8_t *atr, size_t atrlen) {
         T1len++;
 
         if (TD1 & 0x10) {
-            PrintAndLogEx(INFO, "\t- TA2 (Specific protocol and parameters to be used after the ATR) [ 0x%02x ]", atr[2 + T1len + TD1len]);
+            PrintAndLogEx(INFO, "    - TA2 (Specific protocol and parameters to be used after the ATR) [ 0x%02x ]", atr[2 + T1len + TD1len]);
             TD1len++;
         }
         if (TD1 & 0x20) {
-            PrintAndLogEx(INFO, "\t- TB2 (Deprecated: VPP precise voltage requirement) [ 0x%02x ]", atr[2 + T1len + TD1len]);
+            PrintAndLogEx(INFO, "    - TB2 (Deprecated: VPP precise voltage requirement) [ 0x%02x ]", atr[2 + T1len + TD1len]);
             TD1len++;
         }
         if (TD1 & 0x40) {
-            PrintAndLogEx(INFO, "\t- TC2 (Maximum waiting time for protocol T=0) [ 0x%02x ]", atr[2 + T1len + TD1len]);
+            PrintAndLogEx(INFO, "    - TC2 (Maximum waiting time for protocol T=0) [ 0x%02x ]", atr[2 + T1len + TD1len]);
             TD1len++;
         }
         if (TD1 & 0x80) {
             uint8_t TDi = atr[2 + T1len + TD1len];
-            PrintAndLogEx(INFO, "\t- TD2 (A supported protocol or more global parameters, presence of TA3..TD3) [ 0x%02x ] Protocol T%d", TDi, TDi & 0x0f);
+            PrintAndLogEx(INFO, "    - TD2 (A supported protocol or more global parameters, presence of TA3..TD3) [ 0x%02x ] Protocol T%d", TDi, TDi & 0x0f);
             if ((TDi & 0x0f) == 0) {
                 protocol_T0_present = true;
             }
@@ -204,20 +213,20 @@ static void PrintATR(uint8_t *atr, size_t atrlen) {
             while (nextCycle) {
                 nextCycle = false;
                 if (TDi & 0x10) {
-                    PrintAndLogEx(INFO, "\t- TA%d: 0x%02x", vi, atr[2 + T1len + TD1len + TDilen]);
+                    PrintAndLogEx(INFO, "    - TA%d: 0x%02x", vi, atr[2 + T1len + TD1len + TDilen]);
                     TDilen++;
                 }
                 if (TDi & 0x20) {
-                    PrintAndLogEx(INFO, "\t- TB%d: 0x%02x", vi, atr[2 + T1len + TD1len + TDilen]);
+                    PrintAndLogEx(INFO, "    - TB%d: 0x%02x", vi, atr[2 + T1len + TD1len + TDilen]);
                     TDilen++;
                 }
                 if (TDi & 0x40) {
-                    PrintAndLogEx(INFO, "\t- TC%d: 0x%02x", vi, atr[2 + T1len + TD1len + TDilen]);
+                    PrintAndLogEx(INFO, "    - TC%d: 0x%02x", vi, atr[2 + T1len + TD1len + TDilen]);
                     TDilen++;
                 }
                 if (TDi & 0x80) {
                     TDi = atr[2 + T1len + TD1len + TDilen];
-                    PrintAndLogEx(INFO, "\t- TD%d [ 0x%02x ] Protocol T%d", vi, TDi, TDi & 0x0f);
+                    PrintAndLogEx(INFO, "    - TD%d [ 0x%02x ] Protocol T=%d", vi, TDi, TDi & 0x0f);
                     TDilen++;
 
                     nextCycle = true;
@@ -247,17 +256,17 @@ static void PrintATR(uint8_t *atr, size_t atrlen) {
         PrintAndLogEx(WARNING, "Invalid ATR length. len: %zu, T1len: %d, TD1len: %d, TDilen: %d, K: %d", atrlen, T1len, TD1len, TDilen, K);
 
     if (K > 0)
-        PrintAndLogEx(INFO, "Historical bytes | len %02d | format %02x", K, atr[2 + T1len + TD1len + TDilen]);
+        PrintAndLogEx(DEBUG, "Historical bytes | len %02d | format %02x", K, atr[2 + T1len + TD1len + TDilen]);
 
     if (K > 1) {
-        PrintAndLogEx(INFO, "\tHistorical bytes");
+        PrintAndLogEx(INFO, "    Historical bytes ( %u )", K);
         print_buffer(&atr[2 + T1len + TD1len + TDilen], K, 1);
     }
 }
 
 static int smart_wait(uint8_t *out, int maxoutlen, bool verbose) {
     int i = 4;
-    uint32_t len = 0;
+    uint32_t len;
     do {
         clearCommandBuffer();
         PacketResponseNG resp;
@@ -308,6 +317,7 @@ static int smart_wait(uint8_t *out, int maxoutlen, bool verbose) {
 static int smart_responseEx(uint8_t *out, int maxoutlen, bool verbose) {
 
     int datalen = smart_wait(out, maxoutlen, verbose);
+    int totallen = datalen;
     bool needGetData = false;
 
     if (datalen < 2) {
@@ -318,8 +328,26 @@ static int smart_responseEx(uint8_t *out, int maxoutlen, bool verbose) {
         needGetData = true;
     }
 
-    if (needGetData) {
+    if (needGetData == true) {
+        // Don't discard data we already received except the SW code.
+        // If we only received 1 byte, this is the echo of INS, we discard it.
+        totallen -= 2;
+        if (totallen == 1) {
+            totallen = 0;
+        }
+        int ofs = totallen;
+        maxoutlen -= totallen;
+        PrintAndLogEx(DEBUG, "Keeping data (%d bytes): %s", ofs, sprint_hex(out, ofs));
+
         int len = out[datalen - 1];
+        if (len == 0 || len > MAX_APDU_SIZE) {
+            // Cap the data length or the smartcard may send us a buffer we can't handle
+            len = MAX_APDU_SIZE;
+        }
+        if (maxoutlen < len) {
+            // We don't have enough buffer to hold the next part
+            goto out;
+        }
 
         if (verbose) PrintAndLogEx(INFO, "Requesting " _YELLOW_("0x%02X") " bytes response", len);
 
@@ -333,7 +361,7 @@ static int smart_responseEx(uint8_t *out, int maxoutlen, bool verbose) {
         SendCommandNG(CMD_SMART_RAW, (uint8_t *)payload, sizeof(smart_card_raw_t) + sizeof(cmd_getresp));
         free(payload);
 
-        datalen = smart_wait(out, maxoutlen, verbose);
+        datalen = smart_wait(&out[ofs], maxoutlen, verbose);
 
         if (datalen < 2) {
             goto out;
@@ -343,7 +371,7 @@ static int smart_responseEx(uint8_t *out, int maxoutlen, bool verbose) {
         if (datalen != len + 2) {
             // data with ACK
             if (datalen == len + 2 + 1) { // 2 - response, 1 - ACK
-                if (out[0] != ISO7816_GET_RESPONSE) {
+                if (out[ofs] != ISO7816_GET_RESPONSE) {
                     if (verbose) {
                         PrintAndLogEx(ERR, "GetResponse ACK error. len 0x%x | data[0] %02X", len, out[0]);
                     }
@@ -352,7 +380,8 @@ static int smart_responseEx(uint8_t *out, int maxoutlen, bool verbose) {
                 }
 
                 datalen--;
-                memmove(out, &out[1], datalen);
+                memmove(&out[ofs], &out[ofs + 1], datalen);
+                totallen += datalen;
             } else {
                 // wrong length
                 if (verbose) {
@@ -363,7 +392,7 @@ static int smart_responseEx(uint8_t *out, int maxoutlen, bool verbose) {
     }
 
 out:
-    return datalen;
+    return totallen;
 }
 
 static int smart_response(uint8_t *out, int maxoutlen) {
@@ -492,19 +521,19 @@ static int CmdSmartUpgrade(const char *Cmd) {
 
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "smart upgrade",
-                  "Upgrade RDV4.0 sim module firmware",
-                  "smart upgrade -f sim011.bin"
+                  "Upgrade RDV4 sim module firmware",
+                  "smart upgrade -f sim013.bin"
                  );
 
     void *argtable[] = {
         arg_param_begin,
-        arg_str1("f", "file", "<filename>", "firmware file name"),
+        arg_str1("f", "file", "<fn>", "Specify firmware file name"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
     int fnlen = 0;
     char filename[FILE_PATH_SIZE] = {0};
-    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)filename, sizeof(filename), &fnlen);
+    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)filename, FILE_PATH_SIZE, &fnlen);
     CLIParserFree(ctx);
 
     char *bin_extension = filename;
@@ -661,7 +690,7 @@ static int CmdSmartInfo(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_lit0("v", "verbose", "verbose"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -690,8 +719,17 @@ static int CmdSmartInfo(const char *Cmd) {
 
     // print header
     PrintAndLogEx(INFO, "--- " _CYAN_("Smartcard Information") " ---------");
-    PrintAndLogEx(INFO, "ISO7618-3 ATR : %s", sprint_hex(card.atr, card.atr_len));
-    PrintAndLogEx(INFO, "http://smartcard-atr.apdu.fr/parse?ATR=%s", sprint_hex_inrow(card.atr, card.atr_len));
+    PrintAndLogEx(INFO, "ISO7816-3 ATR... %s", sprint_hex(card.atr, card.atr_len));
+    // convert bytes to str.
+    char *hexstr = calloc((card.atr_len << 1) + 1, sizeof(uint8_t));
+    if (hexstr == NULL) {
+        PrintAndLogEx(WARNING, "failed to allocate memory");
+        return PM3_EMALLOC;
+    }
+
+    hex_to_buffer((uint8_t *)hexstr, card.atr, card.atr_len, (card.atr_len << 1), 0, 0, true);
+    PrintAndLogEx(INFO, "Fingerprint..... %s", getAtrInfo(hexstr));
+    free(hexstr);
 
     // print ATR
     PrintAndLogEx(INFO, "ATR");
@@ -730,7 +768,7 @@ static int CmdSmartReader(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_lit0("v", "verbose", "verbose"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -754,7 +792,18 @@ static int CmdSmartReader(const char *Cmd) {
         return PM3_ESOFT;
     }
     smart_card_atr_t *card = (smart_card_atr_t *)resp.data.asBytes;
-    PrintAndLogEx(INFO, "ISO7816-3 ATR : %s", sprint_hex(card->atr, card->atr_len));
+    PrintAndLogEx(INFO, "ISO7816-3 ATR... %s", sprint_hex(card->atr, card->atr_len));
+
+    // convert bytes to str.
+    char *hexstr = calloc((card->atr_len << 1) + 1, sizeof(uint8_t));
+    if (hexstr == NULL) {
+        PrintAndLogEx(WARNING, "failed to allocate memory");
+        return PM3_EMALLOC;
+    }
+
+    hex_to_buffer((uint8_t *)hexstr, card->atr, card->atr_len, (card->atr_len << 1), 0, 0, true);
+    PrintAndLogEx(INFO, "Fingerprint..... %s", getAtrInfo(hexstr));
+    free(hexstr);
     return PM3_SUCCESS;
 }
 
@@ -1167,7 +1216,7 @@ bool smart_select(bool verbose, smart_card_atr_t *atr) {
     SendCommandNG(CMD_SMART_ATR, NULL, 0);
     PacketResponseNG resp;
     if (WaitForResponseTimeout(CMD_SMART_ATR, &resp, 2500) == false) {
-        if (verbose) PrintAndLogEx(WARNING, "smart card select timeouted");
+        if (verbose) PrintAndLogEx(WARNING, "smart card select timeout");
         return false;
     }
 

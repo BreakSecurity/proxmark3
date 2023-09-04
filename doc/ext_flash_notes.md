@@ -1,14 +1,27 @@
 # External flash
+<a id="Top"></a>
 
 External 256kbytes flash is a unique feature of the RDV4 edition.
 
+# Table of Contents
+- [External flash](#external-flash)
+- [Table of Contents](#table-of-contents)
+  - [Addresses](#addresses)
+  - [Layout](#layout)
+  - [Page3 Layout](#page3-layout)
+  - [RSA signature](#rsa-signature)
+- [backup first!](#backup-first)
+
+
+
 ## Addresses
+^[Top](#top)
 
 Flash memory is
 
-* 256kb (0x40000= 262144)
-* divided into 4 pages of 64kb (0x10000 = 65536)
-* 4 pages divided into 16 sectors of 4kb (0x1000 = 4096), so last sector is at 0x3F000
+* 256KB (0x40000= 262144)
+* divided into 4 pages of 64KB (0x10000 = 65536)
+* 4 pages divided into 16 sectors of 4KB (0x1000 = 4096), so last sector is at 0x3F000
 
 Therefore a flash address can be interpreted as such:
 ```
@@ -19,6 +32,7 @@ Therefore a flash address can be interpreted as such:
 ```
 
 ## Layout
+^[Top](#top)
 
 Page 0:
 * available for user data
@@ -44,6 +58,7 @@ Page 3:
   * Updating keys dictionaries doesn't require to erase page 3.
 
 ## Page3 Layout
+^[Top](#top)
 
 Page3 is used as follows by the Proxmark3 RDV4 firmware:
 
@@ -69,6 +84,7 @@ Page3 is used as follows by the Proxmark3 RDV4 firmware:
   * offset should have been 0x3FF80 but historically it's one byte off and therefore the last byte of the flash is unused
 
 ## RSA signature
+^[Top](#top)
 
 To ensure your Proxmark3 RDV4 is not a counterfeit product, its external flash contains a RSA signature of the flash unique ID.
 You can verify it with: `mem info`
@@ -105,6 +121,8 @@ Here below is a sample output of a RDV4 device.
 ```
 
 # backup first!
+^[Top](#top)
+
 To make a backup of the signature to file:
 
 `mem dump p f flash_signature_dump o 262015 l 128`

@@ -1,11 +1,21 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2015 iceman <iceman at iuse.se>
+// Borrowed initially from https://reveng.sourceforge.io/
+// Copyright (C) Greg Cook 2019
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// CRC Calculations from the software reveng commands
+// CRC Calculations
 //-----------------------------------------------------------------------------
 #include "cmdcrc.h"
 
@@ -414,8 +424,8 @@ static int CmdrevengSearch(const char *Cmd) {
     uint8_t width[NMODELS] = {0};
     int count = 0;
 
-    char result[30];
-    char revResult[30];
+    char result[50 + 1] = {0};
+    char revResult[50 + 1] = {0};
     int ans = GetModels(Models, &count, width);
     bool found = false;
     if (!ans) {
@@ -451,11 +461,20 @@ static int CmdrevengSearch(const char *Cmd) {
             continue;
         }
 
-        memset(result, 0, 30);
+        memset(result, 0, sizeof(result));
         char *inCRC = calloc(crcChars + 1, sizeof(char));
+        if (inCRC == NULL) {
+            return 0;
+        }
+
         memcpy(inCRC, inHexStr + (dataLen - crcChars), crcChars);
 
         char *outHex = calloc(dataLen - crcChars + 1, sizeof(char));
+        if (outHex == NULL) {
+            free(inCRC);
+            return 0;
+        }
+
         memcpy(outHex, inHexStr, dataLen - crcChars);
 
         ans = RunModel(Models[i], outHex, false, 0, result);

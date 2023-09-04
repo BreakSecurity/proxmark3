@@ -1,9 +1,18 @@
 //-----------------------------------------------------------------------------
-// Copyright 2020 Michael Farrell <micolous+git@gmail.com>
+// Copyright (C) 2020 Michael Farrell <micolous+git@gmail.com>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // main code for standalone HF/iso14a Sniff to flash
 //-----------------------------------------------------------------------------
@@ -19,7 +28,7 @@
  * at power-off).
  *
  * Short-pressing the button again will stop sniffing, and at _this_ point
- * append trace data from RAM to a file in flash (hf_14asniff.trc) and unmount.
+ * append trace data from RAM to a file in flash (hf_14asniff.trace) and unmount.
  *
  * Once the data is saved, standalone mode will exit.
  *
@@ -31,10 +40,10 @@
  *
  * To retrieve trace data from flash:
  *
- * 1. mem spiffs dump -s hf_14asniff.trc -d trace.trc
+ * 1. mem spiffs dump -s hf_14asniff.trace -d hf_14asniff.trace
  *    Copies trace data file from flash to your PC.
  *
- * 2. trace load trace.trc
+ * 2. trace load hf_14asniff.trace
  *    Loads trace data from a file into PC-side buffers.
  *
  * 3. For ISO14a: trace list -t 14a -1
@@ -66,13 +75,13 @@
 #include "ticks.h"
 #include "BigBuf.h"
 
-#define HF_14ASNIFF_LOGFILE "hf_14asniff.trc"
+#define HF_14ASNIFF_LOGFILE "hf_14asniff.trace"
 
 static void DownloadTraceInstructions(void) {
     Dbprintf("");
     Dbprintf("To get the trace from flash and display it:");
-    Dbprintf("1. mem spiffs dump -s "HF_14ASNIFF_LOGFILE" -d trace.trc");
-    Dbprintf("2. trace load -f trace.trc");
+    Dbprintf("1. mem spiffs dump -s "HF_14ASNIFF_LOGFILE" -d hf_14asniff.trace");
+    Dbprintf("2. trace load -f hf_14asniff.trace");
     Dbprintf("3. trace list -t 14a -1");
 }
 
@@ -85,15 +94,22 @@ void RunMod(void) {
     StandAloneMode();
 
     Dbprintf(_YELLOW_("HF 14A SNIFF started"));
+#ifdef WITH_FLASH
     rdv40_spiffs_lazy_mount();
+#endif
 
     SniffIso14443a(0);
 
     Dbprintf("Stopped sniffing");
     SpinDelay(200);
 
-    // Write stuff to spiffs logfile
     uint32_t trace_len = BigBuf_get_traceLen();
+#ifndef WITH_FLASH
+    // Keep stuff in BigBuf for USB/BT dumping
+    if (trace_len > 0)
+        Dbprintf("[!] Trace length (bytes) = %u", trace_len);
+#else
+    // Write stuff to spiffs logfile
     if (trace_len > 0) {
         Dbprintf("[!] Trace length (bytes) = %u", trace_len);
 
@@ -117,8 +133,12 @@ void RunMod(void) {
 
     SpinErr(LED_A, 200, 5);
     SpinDelay(100);
+#endif
 
     Dbprintf("-=[ exit ]=-");
     LEDsoff();
+#ifdef WITH_FLASH
     DownloadTraceInstructions();
+#endif
+
 }

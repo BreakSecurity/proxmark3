@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2021 Merlok
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // CIPURSE crypto primitives
 //-----------------------------------------------------------------------------
@@ -86,7 +94,7 @@ static uint64_t computeNLM48(uint64_t x, uint64_t y) {
     return res;
 }
 
-static void computeNLM(uint8_t *res, uint8_t *x, uint8_t *y) {
+static void computeNLM(uint8_t *res, const uint8_t *x, const uint8_t *y) {
     uint64_t x64 = 0;
     uint64_t y64 = 0;
 
@@ -103,7 +111,7 @@ static void computeNLM(uint8_t *res, uint8_t *x, uint8_t *y) {
     }
 }
 
-static void CipurseCGenerateK0AndCp(CipurseContext *ctx) {
+static void CipurseCGenerateK0AndCp(CipurseContext_t *ctx) {
     uint8_t temp1[CIPURSE_AES_KEY_LENGTH] = {0};
     uint8_t temp2[CIPURSE_AES_KEY_LENGTH] = {0};
     uint8_t kp[CIPURSE_SECURITY_PARAM_N] = {0};
@@ -145,59 +153,59 @@ void CipurseCGetKVV(uint8_t *key, uint8_t *kvv) {
     memcpy(kvv, res, CIPURSE_KVV_LENGTH);
 }
 
-void CipurseCClearContext(CipurseContext *ctx) {
+void CipurseCClearContext(CipurseContext_t *ctx) {
     if (ctx == NULL)
         return;
 
-    memset(ctx, 0, sizeof(CipurseContext));
+    memset(ctx, 0, sizeof(CipurseContext_t));
 }
 
-void CipurseCSetKey(CipurseContext *ctx, uint8_t keyId, uint8_t *key) {
+void CipurseCSetKey(CipurseContext_t *ctx, uint8_t keyId, uint8_t *key) {
     if (ctx == NULL)
         return;
 
     CipurseCClearContext(ctx);
 
     ctx->keyId = keyId;
-    memcpy(ctx->key, key, member_size(CipurseContext, key));
+    memcpy(ctx->key, key, member_size(CipurseContext_t, key));
 }
 
-void CipurseCChannelSetSecurityLevels(CipurseContext *ctx, CipurseChannelSecurityLevel req, CipurseChannelSecurityLevel resp) {
+void CipurseCChannelSetSecurityLevels(CipurseContext_t *ctx, CipurseChannelSecurityLevel req, CipurseChannelSecurityLevel resp) {
     ctx->RequestSecurity = req;
     ctx->ResponseSecurity = resp;
 }
 
-bool isCipurseCChannelSecuritySet(CipurseContext *ctx) {
+bool isCipurseCChannelSecuritySet(CipurseContext_t *ctx) {
     return ((ctx->RequestSecurity != CPSNone) && (ctx->ResponseSecurity != CPSNone));
 }
 
-void CipurseCSetRandomFromPICC(CipurseContext *ctx, uint8_t *random) {
+void CipurseCSetRandomFromPICC(CipurseContext_t *ctx, uint8_t *random) {
     if (ctx == NULL)
         return;
 
-    memcpy(ctx->RP, random, member_size(CipurseContext, RP));
-    memcpy(ctx->rP, random + member_size(CipurseContext, RP), member_size(CipurseContext, rP));
+    memcpy(ctx->RP, random, member_size(CipurseContext_t, RP));
+    memcpy(ctx->rP, random + member_size(CipurseContext_t, RP), member_size(CipurseContext_t, rP));
 }
 
-void CipurseCSetRandomHost(CipurseContext *ctx) {
-    memset(ctx->RT, 0x10, member_size(CipurseContext, RT));
-    memset(ctx->rT, 0x20, member_size(CipurseContext, rT));
+void CipurseCSetRandomHost(CipurseContext_t *ctx) {
+    memset(ctx->RT, 0x10, member_size(CipurseContext_t, RT));
+    memset(ctx->rT, 0x20, member_size(CipurseContext_t, rT));
 }
 
-uint8_t CipurseCGetSMI(CipurseContext *ctx, bool LePresent) {
+uint8_t CipurseCGetSMI(CipurseContext_t *ctx, bool LePresent) {
     uint8_t res = LePresent ? 1 : 0;
     res = res | (CipurseCSecurityLevelEnc(ctx->ResponseSecurity) << 2);
     res = res | (CipurseCSecurityLevelEnc(ctx->RequestSecurity) << 6);
     return res;
 }
 
-static void CipurseCFillAuthData(CipurseContext *ctx, uint8_t *authdata) {
-    memcpy(authdata, ctx->cP, member_size(CipurseContext, cP));
-    memcpy(&authdata[member_size(CipurseContext, cP)], ctx->RT, member_size(CipurseContext, RT));
-    memcpy(&authdata[member_size(CipurseContext, cP) + member_size(CipurseContext, RT)], ctx->rT, member_size(CipurseContext, rT));
+static void CipurseCFillAuthData(CipurseContext_t *ctx, uint8_t *authdata) {
+    memcpy(authdata, ctx->cP, member_size(CipurseContext_t, cP));
+    memcpy(&authdata[member_size(CipurseContext_t, cP)], ctx->RT, member_size(CipurseContext_t, RT));
+    memcpy(&authdata[member_size(CipurseContext_t, cP) + member_size(CipurseContext_t, RT)], ctx->rT, member_size(CipurseContext_t, rT));
 }
 
-void CipurseCAuthenticateHost(CipurseContext *ctx, uint8_t *authdata) {
+void CipurseCAuthenticateHost(CipurseContext_t *ctx, uint8_t *authdata) {
     if (ctx == NULL)
         return;
 
@@ -209,11 +217,11 @@ void CipurseCAuthenticateHost(CipurseContext *ctx, uint8_t *authdata) {
         CipurseCFillAuthData(ctx, authdata);
 }
 
-bool CipurseCCheckCT(CipurseContext *ctx, uint8_t *CT) {
+bool CipurseCCheckCT(CipurseContext_t *ctx, uint8_t *CT) {
     return (memcmp(CT, ctx->CT, CIPURSE_AES_KEY_LENGTH) == 0);
 }
 
-static uint16_t CipurseCComputeMICCRC(uint8_t *data, size_t len) {
+static uint16_t CipurseCComputeMICCRC(const uint8_t *data, size_t len) {
     uint16_t initCRC = 0x6363;
     for (size_t i = 0; i < len; i++) {
         uint8_t ch = data[i] ^ initCRC;
@@ -272,7 +280,7 @@ bool CipurseCCheckMIC(uint8_t *data, size_t datalen, uint8_t *mic) {
  * Dx+1 ), ... hy := AES( key = hy-1 ; q ) XOR q, Cy := AES( key = hy ;
  * Dy ), ki+1 := hy
  */
-void CipurseCEncryptDecrypt(CipurseContext *ctx, uint8_t *data, size_t datalen, uint8_t *dstdata, bool isEncrypt) {
+void CipurseCEncryptDecrypt(CipurseContext_t *ctx, uint8_t *data, size_t datalen, uint8_t *dstdata, bool isEncrypt) {
     uint8_t hx[CIPURSE_AES_KEY_LENGTH] = {0};
 
     if (datalen == 0 || datalen % CIPURSE_AES_KEY_LENGTH != 0)
@@ -295,7 +303,7 @@ void CipurseCEncryptDecrypt(CipurseContext *ctx, uint8_t *data, size_t datalen, 
     memcpy(ctx->frameKey, ctx->frameKeyNext, CIPURSE_AES_KEY_LENGTH);
 }
 
-void CipurseCChannelEncrypt(CipurseContext *ctx, uint8_t *data, size_t datalen, uint8_t *encdata, size_t *encdatalen) {
+void CipurseCChannelEncrypt(CipurseContext_t *ctx, uint8_t *data, size_t datalen, uint8_t *encdata, size_t *encdatalen) {
     uint8_t pdata[datalen + CIPURSE_AES_KEY_LENGTH];
     size_t pdatalen = 0;
     AddISO9797M2Padding(pdata, &pdatalen, data, datalen, CIPURSE_AES_KEY_LENGTH);
@@ -304,7 +312,7 @@ void CipurseCChannelEncrypt(CipurseContext *ctx, uint8_t *data, size_t datalen, 
     *encdatalen = pdatalen;
 }
 
-void CipurseCChannelDecrypt(CipurseContext *ctx, uint8_t *data, size_t datalen, uint8_t *plaindata, size_t *plaindatalen) {
+void CipurseCChannelDecrypt(CipurseContext_t *ctx, uint8_t *data, size_t datalen, uint8_t *plaindata, size_t *plaindatalen) {
     CipurseCEncryptDecrypt(ctx, data, datalen, plaindata, false);
     *plaindatalen = FindISO9797M2PaddingDataLen(plaindata, datalen);
 }
@@ -320,7 +328,7 @@ void CipurseCChannelDecrypt(CipurseContext *ctx, uint8_t *data, size_t datalen, 
  * hy+1 M'i := AES( key = ki ; ki+1 ) XOR ki+1, Mi := m LS bits of M'i = (
  * (M'i )0, (M'i )1, ..., (M'i )m-1)
  */
-void CipurseCGenerateMAC(CipurseContext *ctx, uint8_t *data, size_t datalen, uint8_t *mac) {
+void CipurseCGenerateMAC(CipurseContext_t *ctx, uint8_t *data, size_t datalen, uint8_t *mac) {
     uint8_t temp[CIPURSE_AES_KEY_LENGTH] = {0};
 
     memcpy(ctx->frameKeyNext, ctx->frameKey, CIPURSE_AES_KEY_LENGTH);
@@ -339,20 +347,20 @@ void CipurseCGenerateMAC(CipurseContext *ctx, uint8_t *data, size_t datalen, uin
         memcpy(mac, temp, CIPURSE_MAC_LENGTH);
 }
 
-void CipurseCCalcMACPadded(CipurseContext *ctx, uint8_t *data, size_t datalen, uint8_t *mac) {
+void CipurseCCalcMACPadded(CipurseContext_t *ctx, uint8_t *data, size_t datalen, uint8_t *mac) {
     uint8_t pdata[datalen + CIPURSE_AES_KEY_LENGTH];
     size_t pdatalen = 0;
     AddISO9797M2Padding(pdata, &pdatalen, data, datalen, CIPURSE_AES_KEY_LENGTH);
     CipurseCGenerateMAC(ctx, pdata, pdatalen, mac);
 }
 
-bool CipurseCCheckMACPadded(CipurseContext *ctx, uint8_t *data, size_t datalen, uint8_t *mac) {
+bool CipurseCCheckMACPadded(CipurseContext_t *ctx, uint8_t *data, size_t datalen, uint8_t *mac) {
     uint8_t xmac[CIPURSE_MAC_LENGTH] = {0};
     CipurseCCalcMACPadded(ctx, data, datalen, xmac);
     return (memcmp(mac, xmac, CIPURSE_MAC_LENGTH) == 0);
 }
 
-static void CipurseCAPDUMACEncode(CipurseContext *ctx, sAPDU *apdu, uint8_t originalLc, uint8_t *data, size_t *datalen) {
+static void CipurseCAPDUMACEncode(CipurseContext_t *ctx, sAPDU_t *apdu, uint8_t originalLc, uint8_t *data, size_t *datalen) {
     data[0] = apdu->CLA;
     data[1] = apdu->INS;
     data[2] = apdu->P1;
@@ -365,12 +373,12 @@ static void CipurseCAPDUMACEncode(CipurseContext *ctx, sAPDU *apdu, uint8_t orig
     memcpy(&data[5], apdu->data, *datalen);
 }
 
-void CipurseCAPDUReqEncode(CipurseContext *ctx, sAPDU *srcapdu, sAPDU *dstapdu, uint8_t *dstdatabuf, bool includeLe, uint8_t Le) {
+void CipurseCAPDUReqEncode(CipurseContext_t *ctx, sAPDU_t *srcapdu, sAPDU_t *dstapdu, uint8_t *dstdatabuf, bool includeLe, uint8_t Le) {
     uint8_t mac[CIPURSE_MAC_LENGTH] = {0};
     uint8_t buf[260] = {0};
     size_t buflen = 0;
 
-    memcpy(dstapdu, srcapdu, sizeof(sAPDU));
+    memcpy(dstapdu, srcapdu, sizeof(sAPDU_t));
 
     if (isCipurseCChannelSecuritySet(ctx) == false)
         return;
@@ -422,7 +430,7 @@ void CipurseCAPDUReqEncode(CipurseContext *ctx, sAPDU *srcapdu, sAPDU *dstapdu, 
 
 }
 
-void CipurseCAPDURespDecode(CipurseContext *ctx, uint8_t *srcdata, size_t srcdatalen, uint8_t *dstdata, size_t *dstdatalen, uint16_t *sw) {
+void CipurseCAPDURespDecode(CipurseContext_t *ctx, uint8_t *srcdata, size_t srcdatalen, uint8_t *dstdata, size_t *dstdatalen, uint16_t *sw) {
     uint8_t buf[260] = {0};
     size_t buflen = 0;
     uint8_t micdata[260] = {0};

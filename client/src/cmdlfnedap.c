@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency NEDAP tag commands
 //-----------------------------------------------------------------------------
@@ -33,9 +42,9 @@
 
 static int CmdHelp(const char *Cmd);
 
-const uint8_t translateTable[10] = {8, 2, 1, 12, 4, 5, 10, 13, 0, 9};
-const uint8_t invTranslateTable[16] = {8, 2, 1, 0xff, 4, 5, 0xff, 0xff, 0, 9, 6, 0xff, 3, 7, 0xff, 0xff};
-const uint8_t preamble[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0}; // zero inside
+static const uint8_t translateTable[10] = {8, 2, 1, 12, 4, 5, 10, 13, 0, 9};
+static const uint8_t invTranslateTable[16] = {8, 2, 1, 0xff, 4, 5, 0xff, 0xff, 0, 9, 6, 0xff, 3, 7, 0xff, 0xff};
+static const uint8_t preamble[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0}; // zero inside
 
 static uint8_t isEven_64_63(const uint8_t *data) { // 8
     uint32_t tmp[2];
@@ -46,7 +55,7 @@ static uint8_t isEven_64_63(const uint8_t *data) { // 8
 //NEDAP demod - ASK/Biphase (or Diphase),  RF/64 with preamble of 1111111110  (always a 128 bit data stream)
 int demodNedap(bool verbose) {
     (void) verbose; // unused so far
-    uint8_t data[16], buffer[7], r0, r1, r2, r3, r4, r5, idxC1, idxC2, idxC3, idxC4, idxC5, fixed0, fixed1, unk1, unk2, subtype; // 4 bits
+    uint8_t data[16], buffer[7], subtype; // 4 bits
     size_t size, offset = 0;
     uint16_t checksum, customerCode; // 12 bits
     uint32_t badgeId; // max 99999
@@ -56,14 +65,14 @@ int demodNedap(bool verbose) {
         return PM3_ESOFT;
     }
 
-    size = DemodBufferLen;
-    if (!preambleSearch(DemodBuffer, (uint8_t *) preamble, sizeof(preamble), &size, &offset)) {
+    size = g_DemodBufferLen;
+    if (!preambleSearch(g_DemodBuffer, (uint8_t *) preamble, sizeof(preamble), &size, &offset)) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - NEDAP: preamble not found");
         return PM3_ESOFT;
     }
 
     // set plot
-    setDemodBuff(DemodBuffer, size, offset);
+    setDemodBuff(g_DemodBuffer, size, offset);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (g_DemodClock * offset));
 
     // sanity checks
@@ -72,7 +81,7 @@ int demodNedap(bool verbose) {
         return PM3_ESOFT;
     }
 
-    if (bits_to_array(DemodBuffer, size, data) != PM3_SUCCESS) {
+    if (bits_to_array(g_DemodBuffer, size, data) != PM3_SUCCESS) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - NEDAP: bits_to_array error\n");
         return PM3_ESOFT;
     }
@@ -118,19 +127,19 @@ int demodNedap(bool verbose) {
         ret = PM3_ESOFT;
     }
 
-    idxC1 = invTranslateTable[(data[3] & 0x1e) >> 1];
-    idxC2 = invTranslateTable[(data[4] & 0x1e) >> 1];
-    idxC3 = invTranslateTable[(data[5] & 0x1e) >> 1];
-    idxC4 = invTranslateTable[(data[6] & 0x1e) >> 1];
-    idxC5 = invTranslateTable[(data[7] & 0x1e) >> 1];
+    uint8_t idxC1 = invTranslateTable[(data[3] & 0x1e) >> 1];
+    uint8_t idxC2 = invTranslateTable[(data[4] & 0x1e) >> 1];
+    uint8_t idxC3 = invTranslateTable[(data[5] & 0x1e) >> 1];
+    uint8_t idxC4 = invTranslateTable[(data[6] & 0x1e) >> 1];
+    uint8_t idxC5 = invTranslateTable[(data[7] & 0x1e) >> 1];
 
     // validation
     if ((idxC1 != 0xFF) && (idxC2 != 0xFF) && (idxC3 != 0xFF) && (idxC4 != 0xFF) && (idxC5 != 0xFF)) {
-        r1 = idxC1;
-        r2 = ((10 + idxC2) - (idxC1 + 1)) % 10;
-        r3 = ((10 + idxC3) - (idxC2 + 1)) % 10;
-        r4 = ((10 + idxC4) - (idxC3 + 1)) % 10;
-        r5 = ((10 + idxC5) - (idxC4 + 1)) % 10;
+        uint8_t r1 = idxC1;
+        uint8_t r2 = ((10 + idxC2) - (idxC1 + 1)) % 10;
+        uint8_t r3 = ((10 + idxC3) - (idxC2 + 1)) % 10;
+        uint8_t r4 = ((10 + idxC4) - (idxC3 + 1)) % 10;
+        uint8_t r5 = ((10 + idxC5) - (idxC4 + 1)) % 10;
 
         badgeId = r1 * 10000 + r2 * 1000 + r3 * 100 + r4 * 10 + r5;
 
@@ -142,7 +151,7 @@ int demodNedap(bool verbose) {
                       , customerCode
                       , sprint_hex_inrow(data, size / 8)
                      );
-        PrintAndLogEx(DEBUG, "Checksum (%s) 0x%04X",  _GREEN_("ok"), checksum);
+        PrintAndLogEx(DEBUG, "Checksum ( %s ) 0x%04X",  _GREEN_("ok"), checksum);
 
     } else {
         PrintAndLogEx(ERR, "Invalid idx (1:%02x - 2:%02x - 3:%02x - 4:%02x - 5:%02x)", idxC1, idxC2, idxC3, idxC4, idxC5);
@@ -171,18 +180,18 @@ int demodNedap(bool verbose) {
         }
 
         //
-        r4 = (data[8] >> 3) & 0x0F;
-        r5 = ((data[8] << 1) & 0x0F) | (data[9] >> 7);
-        r2 = (data[9] >> 2) & 0x0F;
-        r3 = ((data[9] << 2) & 0x0F) | (data[10] >> 6);
-        r0 = ((data[10] >> 1) & 0x0F);
-        r1 = ((data[10] << 3) & 0x0F) | (data[11] >> 5);
+        uint8_t r4 = (data[8] >> 3) & 0x0F;
+        uint8_t r5 = ((data[8] << 1) & 0x0F) | (data[9] >> 7);
+        uint8_t r2 = (data[9] >> 2) & 0x0F;
+        uint8_t r3 = ((data[9] << 2) & 0x0F) | (data[10] >> 6);
+        uint8_t r0 = ((data[10] >> 1) & 0x0F);
+        uint8_t r1 = ((data[10] << 3) & 0x0F) | (data[11] >> 5);
 
-        fixed0 = ((data[11] << 4) & 0xF0) | (data[12] >> 4);
-        fixed1 = ((data[12] << 5) & 0xE0) | (data[13] >> 3);
+        uint8_t fixed0 = ((data[11] << 4) & 0xF0) | (data[12] >> 4);
+        uint8_t fixed1 = ((data[12] << 5) & 0xE0) | (data[13] >> 3);
 
-        unk1 = ((data[13] << 6) & 0xC0) | (data[14] >> 2);
-        unk2 = ((data[14] << 7) & 0xC0) | (data[15] >> 1);
+        uint8_t unk1 = ((data[13] << 6) & 0xC0) | (data[14] >> 2);
+        uint8_t unk2 = ((data[14] << 7) & 0xC0) | (data[15] >> 1);
 
         // validation 2
         if (!r0 && (r1 < 10) && (r2 < 10) && (r3 < 10) && (r4 < 10) && (r5 < 10)) {
@@ -293,21 +302,20 @@ static int CmdLFNedapReader(const char *Cmd) {
 }
 
 static void NedapGen(uint8_t subType, uint16_t customerCode, uint32_t id, bool isLong, uint8_t *data) { // 8 or 16
-    uint8_t buffer[7], r1, r2, r3, r4, r5, idxC1, idxC2, idxC3, idxC4, idxC5, i, tmp, carry, id2, id1, id0;
-    uint16_t checksum;
+    uint8_t buffer[7];
 
-    r1 = (uint8_t)(id / 10000);
-    r2 = (uint8_t)((id % 10000) / 1000);
-    r3 = (uint8_t)((id % 1000) / 100);
-    r4 = (uint8_t)((id % 100) / 10);
-    r5 = (uint8_t)(id % 10);
+    uint8_t r1 = (uint8_t)(id / 10000);
+    uint8_t r2 = (uint8_t)((id % 10000) / 1000);
+    uint8_t r3 = (uint8_t)((id % 1000) / 100);
+    uint8_t r4 = (uint8_t)((id % 100) / 10);
+    uint8_t r5 = (uint8_t)(id % 10);
 
     // first part
-    idxC1 = r1;
-    idxC2 = (idxC1 + 1 + r2) % 10;
-    idxC3 = (idxC2 + 1 + r3) % 10;
-    idxC4 = (idxC3 + 1 + r4) % 10;
-    idxC5 = (idxC4 + 1 + r5) % 10;
+    uint8_t idxC1 = r1;
+    uint8_t idxC2 = (idxC1 + 1 + r2) % 10;
+    uint8_t idxC3 = (idxC2 + 1 + r3) % 10;
+    uint8_t idxC4 = (idxC3 + 1 + r4) % 10;
+    uint8_t idxC5 = (idxC4 + 1 + r5) % 10;
 
     buffer[0] = 0xc0 | (subType & 0x0F);
     buffer[1] = (customerCode & 0x0FF0) >> 4;
@@ -317,7 +325,7 @@ static void NedapGen(uint8_t subType, uint16_t customerCode, uint32_t id, bool i
 
     // checksum
     init_table(CRC_XMODEM);
-    checksum = crc16_xmodem(buffer, 5);
+    uint16_t checksum = crc16_xmodem(buffer, 5);
 
     buffer[6] = ((checksum & 0x000F) << 4) | (buffer[4] & 0x0F);
     buffer[5] = (checksum & 0x00F0) | ((buffer[4] & 0xF0) >> 4);
@@ -325,8 +333,9 @@ static void NedapGen(uint8_t subType, uint16_t customerCode, uint32_t id, bool i
     buffer[3] = ((checksum & 0xF000) >> 8) | ((buffer[3] & 0xF0) >> 4);
 
     // carry calc
-    for (i = 0, carry = 0; i < sizeof(buffer); i++) {
-        tmp = buffer[sizeof(buffer) - 1 - i];
+    uint8_t carry = 0;
+    for (uint8_t i = 0; i < sizeof(buffer); i++) {
+        uint8_t tmp = buffer[sizeof(buffer) - 1 - i];
         data[7 - i] = ((tmp & 0x7F) << 1) | carry;
         carry = (tmp & 0x80) >> 7;
     }
@@ -335,9 +344,9 @@ static void NedapGen(uint8_t subType, uint16_t customerCode, uint32_t id, bool i
 
     // second part
     if (isLong) {
-        id0 = r1;
-        id1 = (r2 << 4) | r3;
-        id2 = (r4 << 4) | r5;
+        uint8_t id0 = r1;
+        uint8_t id1 = (r2 << 4) | r3;
+        uint8_t id2 = (r4 << 4) | r5;
 
         data[8] = (id2 >> 1);
         data[9] = ((id2 & 0x01) << 7) | (id1 >> 2);
@@ -459,7 +468,7 @@ static int CmdLFNedapClone(const char *Cmd) {
 
     if (res == PM3_SUCCESS) {
         PrintAndLogEx(INFO, "The block 0 was changed (eXtended) which can be hard to detect.");
-        PrintAndLogEx(INFO,  "Configure it manually " _YELLOW_("`lf t55xx config -b 64 --BI -i -o 32`"));
+        PrintAndLogEx(INFO,  "Configure it manually " _YELLOW_("`lf t55xx config --rate 64 --BI -i -o 32`"));
     } else {
         PrintAndLogEx(NORMAL, "");
     }
@@ -529,7 +538,7 @@ static int CmdLFNedapSim(const char *Cmd) {
     PrintAndLogEx(SUCCESS, "Simulating NEDAP - Raw: " _YELLOW_("%s"), sprint_hex_inrow(data, max));
 
     // NEDAP,  Biphase = 2, clock 64, inverted,  (DIPhase == inverted BIphase)
-    lf_asksim_t *payload = calloc(1, sizeof(lf_asksim_t) + DemodBufferLen);
+    lf_asksim_t *payload = calloc(1, sizeof(lf_asksim_t) + g_DemodBufferLen);
     payload->encoding = 2;
     payload->invert = 1;
     payload->separator = 0;
@@ -537,7 +546,7 @@ static int CmdLFNedapSim(const char *Cmd) {
     memcpy(payload->data, bs, (max  *  8));
 
     clearCommandBuffer();
-    SendCommandNG(CMD_LF_ASK_SIMULATE, (uint8_t *)payload,  sizeof(lf_asksim_t) + DemodBufferLen);
+    SendCommandNG(CMD_LF_ASK_SIMULATE, (uint8_t *)payload,  sizeof(lf_asksim_t) + g_DemodBufferLen);
     free(payload);
 
     PacketResponseNG resp;

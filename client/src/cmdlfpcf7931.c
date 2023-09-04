@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2012 Chalk <chalk.secu at gmail.com>
-//               2015 Dake <thomas.cayrou at gmail.com>
-
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency PCF7931 commands
 //-----------------------------------------------------------------------------
@@ -23,7 +30,7 @@ static int CmdHelp(const char *Cmd);
 #define PCF7931_DEFAULT_OFFSET_POSITION 0
 
 // Default values - Configuration
-struct pcf7931_config configPcf = {
+static struct pcf7931_config configPcf = {
     {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
     PCF7931_DEFAULT_INITDELAY,
     PCF7931_DEFAULT_OFFSET_WIDTH,
@@ -36,7 +43,7 @@ int pcf7931_resetConfig(void) {
     configPcf.InitDelay = PCF7931_DEFAULT_INITDELAY;
     configPcf.OffsetWidth = PCF7931_DEFAULT_OFFSET_WIDTH;
     configPcf.OffsetPosition = PCF7931_DEFAULT_OFFSET_POSITION;
-    PrintAndLogEx(INFO, "Configuration resetted");
+    PrintAndLogEx(INFO, "Configuration reset");
     PrintAndLogEx(HINT, "Hint: try " _YELLOW_("`lf pcf7931 config`") " to view current settings");
     return PM3_SUCCESS;
 }

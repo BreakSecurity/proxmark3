@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Marshmellow,
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Viking tag commands (AKA FDI Matalec Transit)
 // ASK/Manchester, RF/32, 64 bits (complete)
@@ -34,21 +42,21 @@ int demodViking(bool verbose) {
         return PM3_ESOFT;
     }
 
-    size_t size = DemodBufferLen;
-    int ans = detectViking(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int ans = detectViking(g_DemodBuffer, &size);
     if (ans < 0) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - Viking Demod %d %s", ans, (ans == -5) ? _RED_("[chksum error]") : "");
         return PM3_ESOFT;
     }
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer + ans, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + ans + 32, 32);
-    uint32_t cardid = bytebits_to_byte(DemodBuffer + ans + 24, 32);
-    uint8_t  checksum = bytebits_to_byte(DemodBuffer + ans + 32 + 24, 8);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer + ans, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + ans + 32, 32);
+    uint32_t cardid = bytebits_to_byte(g_DemodBuffer + ans + 24, 32);
+    uint8_t  checksum = bytebits_to_byte(g_DemodBuffer + ans + 32 + 24, 8);
     PrintAndLogEx(SUCCESS, "Viking - Card " _GREEN_("%08X") ", Raw: %08X%08X", cardid, raw1, raw2);
     PrintAndLogEx(DEBUG, "Checksum: %02X", checksum);
-    setDemodBuff(DemodBuffer, 64, ans);
+    setDemodBuff(g_DemodBuffer, 64, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
     return PM3_SUCCESS;
 }
@@ -104,14 +112,14 @@ static int CmdVikingClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf viking clone",
                   "clone a Viking AM tag to a T55x7, Q5/T5555 or EM4305/4469 tag.",
-                  "lf viking clone --cn 01A337\n"
+                  "lf viking clone --cn 01A337        -> encode for T55x7 tag\n"
                   "lf viking clone --cn 01A337 --q5   -> encode for Q5/T5555 tag\n"
                   "lf viking clone --cn 112233 --em   -> encode for EM4305/4469"
                  );
 
     void *argtable[] = {
         arg_param_begin,
-        arg_strx0(NULL, "cn", "<hex>", "8 digit hex viking card number"),
+        arg_str1(NULL, "cn", "<hex>", "8 digit hex viking card number"),
         arg_lit0(NULL, "q5", "optional - specify writing to Q5/T5555 tag"),
         arg_lit0(NULL, "em", "optional - specify writing to EM4305/4469 tag"),
         arg_param_end
@@ -185,7 +193,7 @@ static int CmdVikingSim(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_strx0(NULL, "cn", "<hex>", "8 digit hex viking card number"),
+        arg_str1(NULL, "cn", "<hex>", "8 digit hex viking card number"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -258,28 +266,51 @@ uint64_t getVikingBits(uint32_t id) {
     return ret;
 }
 
+static bool isValidVikingChecksum(uint8_t *src) {
+    uint32_t checkCalc = bytebits_to_byte(src, 8) ^
+                         bytebits_to_byte(src + 8, 8) ^
+                         bytebits_to_byte(src + 16, 8) ^
+                         bytebits_to_byte(src + 24, 8) ^
+                         bytebits_to_byte(src + 32, 8) ^
+                         bytebits_to_byte(src + 40, 8) ^
+                         bytebits_to_byte(src + 48, 8) ^
+                         bytebits_to_byte(src + 56, 8) ^
+                         0xA8;
+    return checkCalc == 0;
+}
+
 // find viking preamble 0xF200 in already demoded data
 int detectViking(uint8_t *src, size_t *size) {
     //make sure buffer has data
     if (*size < 64) return -2;
+    size_t tsize = *size;
     size_t startIdx = 0;
+    bool preamblefound = false;
     uint8_t preamble[] = {1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    if (!preambleSearch(src, preamble, sizeof(preamble), size, &startIdx))
-        return -4; //preamble not found
-
-    uint32_t checkCalc = bytebits_to_byte(src + startIdx, 8) ^
-                         bytebits_to_byte(src + startIdx + 8, 8) ^
-                         bytebits_to_byte(src + startIdx + 16, 8) ^
-                         bytebits_to_byte(src + startIdx + 24, 8) ^
-                         bytebits_to_byte(src + startIdx + 32, 8) ^
-                         bytebits_to_byte(src + startIdx + 40, 8) ^
-                         bytebits_to_byte(src + startIdx + 48, 8) ^
-                         bytebits_to_byte(src + startIdx + 56, 8);
-
-    if (checkCalc != 0xA8) return -5;
-    if (*size != 64) return -6;
-    //return start position
-    return (int)startIdx;
+    if (preambleSearch(src, preamble, sizeof(preamble), size, &startIdx)) {
+        preamblefound = true;
+        if (*size != 64) return -6;
+        if (isValidVikingChecksum(src + startIdx)) {
+            //return start position
+            return (int)startIdx;
+        }
+    }
+    // Invert bits and try again
+    *size = tsize;
+    for (uint32_t i = 0; i < *size; i++) src[i] ^= 1;
+    if (preambleSearch(src, preamble, sizeof(preamble), size, &startIdx)) {
+        preamblefound = true;
+        if (*size != 64) return -6;
+        if (isValidVikingChecksum(src + startIdx)) {
+            //return start position
+            return (int)startIdx;
+        }
+    }
+    // Restore buffer
+    *size = tsize;
+    for (uint32_t i = 0; i < *size; i++) src[i] ^= 1;
+    if (preamblefound)
+        return -5;
+    else
+        return -4;
 }
-
-

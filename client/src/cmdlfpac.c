@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// by marshmellow
-// by danshuk
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency PAC/Stanley tag commands
 // NRZ, RF/32, 128 bits long
@@ -54,7 +61,7 @@ static int pac_buf_to_cardid(uint8_t *src, const size_t src_size, uint8_t *dst, 
             PrintAndLogEx(DEBUG, "DEBUG: Error - PAC: Parity check failed");
             return PM3_ESOFT;
         }
-        if (idx < dataLength - 1) checksum ^= byte;
+        if (idx < dataLength - 1) checksum ^= dst[idx];
     }
     if (dst[dataLength - 1] != checksum) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - PAC: Bad checksum - expected: %02X, actual: %02X", dst[dataLength - 1], checksum);
@@ -124,8 +131,8 @@ int demodPac(bool verbose) {
         return PM3_ESOFT;
     }
     bool invert = false;
-    size_t size = DemodBufferLen;
-    int ans = detectPac(DemodBuffer, &size, &invert);
+    size_t size = g_DemodBufferLen;
+    int ans = detectPac(g_DemodBuffer, &size, &invert);
     if (ans < 0) {
         if (ans == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - PAC: too few bits found");
@@ -141,21 +148,21 @@ int demodPac(bool verbose) {
 
     if (invert) {
         for (size_t i = ans; i < ans + 128; i++) {
-            DemodBuffer[i] ^= 1;
+            g_DemodBuffer[i] ^= 1;
         }
     }
-    setDemodBuff(DemodBuffer, 128, ans);
+    setDemodBuff(g_DemodBuffer, 128, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
-    uint32_t raw3 = bytebits_to_byte(DemodBuffer + 64, 32);
-    uint32_t raw4 = bytebits_to_byte(DemodBuffer + 96, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
+    uint32_t raw3 = bytebits_to_byte(g_DemodBuffer + 64, 32);
+    uint32_t raw4 = bytebits_to_byte(g_DemodBuffer + 96, 32);
 
     const size_t idLen = 9; // 8 bytes + null terminator
     uint8_t cardid[idLen];
-    int retval = pac_buf_to_cardid(DemodBuffer, DemodBufferLen, cardid, sizeof(cardid));
+    int retval = pac_buf_to_cardid(g_DemodBuffer, g_DemodBufferLen, cardid, sizeof(cardid));
 
     if (retval == PM3_SUCCESS)
         PrintAndLogEx(SUCCESS, "PAC/Stanley - Card: " _GREEN_("%s") ", Raw: %08X%08X%08X%08X", cardid, raw1, raw2, raw3, raw4);
@@ -213,10 +220,10 @@ static int CmdPacClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf pac clone",
                   "clone a PAC/Stanley tag to a T55x7, Q5/T5555 or EM4305/4469 tag.",
-                  "lf pac clone --cn CD4F5552\n"
+                  "lf pac clone --cn CD4F5552           -> encode for T55x7 tag\n"
                   "lf pac clone --cn CD4F5552 --q5      -> encode for Q5/T5555 tag\n"
                   "lf pac clone --cn CD4F5552 --em      -> encode for EM4305/4469\n"
-                  "lf pac clone --raw FF2049906D8511C593155B56D5B2649F"
+                  "lf pac clone --raw FF2049906D8511C593155B56D5B2649F -> encode for T55x7 tag, raw mode"
                  );
 
     void *argtable[] = {

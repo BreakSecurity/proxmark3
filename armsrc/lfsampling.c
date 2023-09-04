@@ -1,7 +1,17 @@
 //-----------------------------------------------------------------------------
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Miscellaneous routines for low frequency sampling.
 //-----------------------------------------------------------------------------
@@ -28,10 +38,21 @@ Default LF config is set to:
     samples_to_skip = 0
     verbose = YES
     */
-static sample_config config = { 1, 8, 1, LF_DIVISOR_125, 0, 0, 1} ;
+
+static sample_config def_config = {
+    .decimation = 1,
+    .bits_per_sample = 8,
+    .averaging = 1,
+    .divisor = LF_DIVISOR_125,
+    .trigger_threshold = 0,
+    .samples_to_skip = 0,
+    .verbose = false,
+};
+
+static sample_config config = { 1, 8, 1, LF_DIVISOR_125, 0, 0, true} ;
 
 // Holds bit packed struct of samples.
-static BitstreamOut data = {0, 0, 0};
+static BitstreamOut_t data = {0, 0, 0};
 
 // internal struct to keep track of samples gathered
 static sampling_t samples = {0, 0, 0, 0};
@@ -45,9 +66,7 @@ void printLFConfig(void) {
     Dbprintf("  [a] averaging........... %s", (config.averaging) ? "yes" : "no");
     Dbprintf("  [t] trigger threshold... %d", config.trigger_threshold);
     Dbprintf("  [s] samples to skip..... %d ", config.samples_to_skip);
-
-    DbpString(_CYAN_("LF Sampling Stack"));
-    print_stack_usage();
+    DbpString("");
 }
 
 void printSamples(void) {
@@ -57,6 +76,11 @@ void printSamples(void) {
     Dbprintf("  counter.............. " _YELLOW_("%u"), samples.counter);
     Dbprintf("  total saved.......... " _YELLOW_("%u"), samples.total_saved);
     print_stack_usage();
+}
+
+
+void setDefaultSamplingConfig(void) {
+    setSamplingConfig(&def_config);
 }
 
 /**
@@ -70,7 +94,7 @@ void printSamples(void) {
  * @brief setSamplingConfig
  * @param sc
  */
-void setSamplingConfig(sample_config *sc) {
+void setSamplingConfig(const sample_config *sc) {
 
     // decimation (1-8) how many bits of adc sample value to save
     if (sc->decimation > 0 && sc->decimation < 9)
@@ -109,7 +133,7 @@ sample_config *getSamplingConfig(void) {
  * @param stream
  * @param bit
  */
-static void pushBit(BitstreamOut *stream, uint8_t bit) {
+static void pushBit(BitstreamOut_t *stream, uint8_t bit) {
     int bytepos = stream->position >> 3; // divide by 8
     int bitpos = stream->position & 7;
     *(stream->buffer + bytepos) &= ~(1 << (7 - bitpos));
@@ -149,7 +173,11 @@ void initSampleBufferEx(uint32_t *sample_size, bool use_malloc) {
         data.buffer = BigBuf_get_addr();
     }
 
-    //
+    // reset data stream
+    data.numbits = 0;
+    data.position = 0;
+
+    // reset samples
     samples.dec_counter = 0;
     samples.sum = 0;
     samples.counter = *sample_size;
@@ -266,11 +294,13 @@ void LFSetupFPGAForADC(int divisor, bool reader_field) {
  * @return the number of bits occupied by the samples.
  */
 uint32_t DoAcquisition(uint8_t decimation, uint8_t bits_per_sample, bool avg, int16_t trigger_threshold,
-                       bool verbose, uint32_t sample_size, uint32_t cancel_after, int32_t samples_to_skip) {
+                       bool verbose, uint32_t sample_size, uint32_t cancel_after, int32_t samples_to_skip, bool ledcontrol) {
 
-    initSampleBuffer(&sample_size);
+    initSampleBuffer(&sample_size); // sample size in bytes
+    sample_size <<= 3; // sample size in bits
+    sample_size /= bits_per_sample; // sample count
 
-    if (DBGLEVEL >= DBG_DEBUG) {
+    if (g_dbglevel >= DBG_DEBUG) {
         printSamples();
     }
 
@@ -294,7 +324,7 @@ uint32_t DoAcquisition(uint8_t decimation, uint8_t bits_per_sample, bool avg, in
 
         WDT_HIT();
 
-        if (AT91C_BASE_SSC->SSC_SR & AT91C_SSC_TXRDY) {
+        if (ledcontrol && (AT91C_BASE_SSC->SSC_SR & AT91C_SSC_TXRDY)) {
             LED_D_ON();
         }
 
@@ -302,7 +332,7 @@ uint32_t DoAcquisition(uint8_t decimation, uint8_t bits_per_sample, bool avg, in
             volatile uint8_t sample = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
 
             // Test point 8 (TP8) can be used to trigger oscilloscope
-            LED_D_OFF();
+            if (ledcontrol) LED_D_OFF();
 
             // threshold either high or low values 128 = center 0.  if trigger = 178
             if (trigger_hit == false) {
@@ -340,8 +370,11 @@ uint32_t DoAcquisition(uint8_t decimation, uint8_t bits_per_sample, bool avg, in
     }
 
     // Ensure that DC offset removal and noise check is performed for any device-side processing
-    removeSignalOffset(data.buffer, samples.total_saved);
-    computeSignalProperties(data.buffer, samples.total_saved);
+    if (bits_per_sample == 8) {
+        // these functions only consider bps==8
+        removeSignalOffset(data.buffer, samples.total_saved);
+        computeSignalProperties(data.buffer, samples.total_saved);
+    }
     return data.numbits;
 }
 /**
@@ -352,10 +385,10 @@ uint32_t DoAcquisition(uint8_t decimation, uint8_t bits_per_sample, bool avg, in
  * @param verbose
  * @return number of bits sampled
  */
-uint32_t DoAcquisition_default(int trigger_threshold, bool verbose) {
-    return DoAcquisition(1, 8, 0, trigger_threshold, verbose, 0, 0, 0);
+uint32_t DoAcquisition_default(int trigger_threshold, bool verbose, bool ledcontrol) {
+    return DoAcquisition(1, 8, 0, trigger_threshold, verbose, 0, 0, 0, ledcontrol);
 }
-uint32_t DoAcquisition_config(bool verbose, uint32_t sample_size) {
+uint32_t DoAcquisition_config(bool verbose, uint32_t sample_size, bool ledcontrol) {
     return DoAcquisition(config.decimation
                          , config.bits_per_sample
                          , config.averaging
@@ -363,10 +396,11 @@ uint32_t DoAcquisition_config(bool verbose, uint32_t sample_size) {
                          , verbose
                          , sample_size
                          , 0    // cancel_after
-                         , config.samples_to_skip);
+                         , config.samples_to_skip
+                         , ledcontrol);
 }
 
-uint32_t DoPartialAcquisition(int trigger_threshold, bool verbose, uint32_t sample_size, uint32_t cancel_after) {
+uint32_t DoPartialAcquisition(int trigger_threshold, bool verbose, uint32_t sample_size, uint32_t cancel_after, bool ledcontrol) {
     return DoAcquisition(config.decimation
                          , config.bits_per_sample
                          , config.averaging
@@ -374,15 +408,16 @@ uint32_t DoPartialAcquisition(int trigger_threshold, bool verbose, uint32_t samp
                          , verbose
                          , sample_size
                          , cancel_after
-                         , 0);  // samples to skip
+                         , 0
+                         , ledcontrol);  // samples to skip
 }
 
-static uint32_t ReadLF(bool reader_field, bool verbose, uint32_t sample_size) {
+static uint32_t ReadLF(bool reader_field, bool verbose, uint32_t sample_size, bool ledcontrol) {
     if (verbose)
         printLFConfig();
 
     LFSetupFPGAForADC(config.divisor, reader_field);
-    uint32_t ret = DoAcquisition_config(verbose, sample_size);
+    uint32_t ret = DoAcquisition_config(verbose, sample_size, ledcontrol);
     StopTicks();
     FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
     return ret;
@@ -392,24 +427,24 @@ static uint32_t ReadLF(bool reader_field, bool verbose, uint32_t sample_size) {
 * Initializes the FPGA for reader-mode (field on), and acquires the samples.
 * @return number of bits sampled
 **/
-uint32_t SampleLF(bool verbose, uint32_t sample_size) {
+uint32_t SampleLF(bool verbose, uint32_t sample_size, bool ledcontrol) {
     BigBuf_Clear_ext(false);
-    return ReadLF(true, verbose, sample_size);
+    return ReadLF(true, verbose, sample_size, ledcontrol);
 }
 /**
 * Initializes the FPGA for sniffer-mode (field off), and acquires the samples.
 * @return number of bits sampled
 **/
-uint32_t SniffLF(bool verbose, uint32_t sample_size) {
+uint32_t SniffLF(bool verbose, uint32_t sample_size, bool ledcontrol) {
     BigBuf_Clear_ext(false);
-    return ReadLF(false, verbose, sample_size);
+    return ReadLF(false, verbose, sample_size, ledcontrol);
 }
 
 /**
 * acquisition of T55x7 LF signal. Similar to other LF, but adjusted with @marshmellows thresholds
 * the data is collected in BigBuf.
 **/
-void doT55x7Acquisition(size_t sample_size) {
+void doT55x7Acquisition(size_t sample_size, bool ledcontrol) {
 
 #define T55xx_READ_UPPER_THRESHOLD 128+60  // 60 grph
 #define T55xx_READ_LOWER_THRESHOLD 128-60  // -60 grph
@@ -429,7 +464,7 @@ void doT55x7Acquisition(size_t sample_size) {
 
     uint16_t checker = 0;
 
-    if (DBGLEVEL >= DBG_DEBUG) {
+    if (g_dbglevel >= DBG_DEBUG) {
         Dbprintf("doT55x7Acquisition - after init");
         print_stack_usage();
     }
@@ -450,13 +485,13 @@ void doT55x7Acquisition(size_t sample_size) {
 
         WDT_HIT();
 
-        if (AT91C_BASE_SSC->SSC_SR & AT91C_SSC_TXRDY) {
+        if (ledcontrol && (AT91C_BASE_SSC->SSC_SR & AT91C_SSC_TXRDY)) {
             LED_D_ON();
         }
 
         if (AT91C_BASE_SSC->SSC_SR & AT91C_SSC_RXRDY) {
             volatile uint8_t sample = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
-            LED_D_OFF();
+            if (ledcontrol) LED_D_OFF();
 
             // skip until the first high sample above threshold
             if (!startFound && sample > T55xx_READ_UPPER_THRESHOLD) {

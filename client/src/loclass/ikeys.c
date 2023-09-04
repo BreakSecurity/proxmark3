@@ -1,40 +1,36 @@
-/*****************************************************************************
- * WARNING
- *
- * THIS CODE IS CREATED FOR EXPERIMENTATION AND EDUCATIONAL USE ONLY.
- *
- * USAGE OF THIS CODE IN OTHER WAYS MAY INFRINGE UPON THE INTELLECTUAL
- * PROPERTY OF OTHER PARTIES, SUCH AS INSIDE SECURE AND HID GLOBAL,
- * AND MAY EXPOSE YOU TO AN INFRINGEMENT ACTION FROM THOSE PARTIES.
- *
- * THIS CODE SHOULD NEVER BE USED TO INFRINGE PATENTS OR INTELLECTUAL PROPERTY RIGHTS.
- *
- *****************************************************************************
- *
- * This file is part of loclass. It is a reconstructon of the cipher engine
- * used in iClass, and RFID techology.
- *
- * The implementation is based on the work performed by
- * Flavio D. Garcia, Gerhard de Koning Gans, Roel Verdult and
- * Milosch Meriac in the paper "Dismantling IClass".
- *
- * Copyright (C) 2014 Martin Holst Swende
- *
- * This is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation, or, at your option, any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with loclass.  If not, see <http://www.gnu.org/licenses/>.
- *
- *
- ****************************************************************************/
-
+//-----------------------------------------------------------------------------
+// Borrowed initially from https://github.com/holiman/loclass
+// Copyright (C) 2014 Martin Holst Swende
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
+// WARNING
+//
+// THIS CODE IS CREATED FOR EXPERIMENTATION AND EDUCATIONAL USE ONLY.
+//
+// USAGE OF THIS CODE IN OTHER WAYS MAY INFRINGE UPON THE INTELLECTUAL
+// PROPERTY OF OTHER PARTIES, SUCH AS INSIDE SECURE AND HID GLOBAL,
+// AND MAY EXPOSE YOU TO AN INFRINGEMENT ACTION FROM THOSE PARTIES.
+//
+// THIS CODE SHOULD NEVER BE USED TO INFRINGE PATENTS OR INTELLECTUAL PROPERTY RIGHTS.
+//-----------------------------------------------------------------------------
+// It is a reconstruction of the cipher engine used in iClass, and RFID techology.
+//
+// The implementation is based on the work performed by
+// Flavio D. Garcia, Gerhard de Koning Gans, Roel Verdult and
+// Milosch Meriac in the paper "Dismantling IClass".
+//-----------------------------------------------------------------------------
 /**
 
 
@@ -205,7 +201,7 @@ static uint64_t check(uint64_t z) {
     return ck1 | ck2 >> 24;
 }
 
-static void permute(BitstreamIn *p_in, uint64_t z, int l, int r, BitstreamOut *out) {
+static void permute(BitstreamIn_t *p_in, uint64_t z, int l, int r, BitstreamOut_t *out) {
     if (bitsLeft(p_in) == 0)
         return;
 
@@ -290,9 +286,9 @@ void hash0(uint64_t c, uint8_t k[8]) {
 
     if (g_debugMode > 0) PrintAndLogEx(DEBUG, "     p : %02x", p);
 
-    BitstreamIn p_in = { &p, 8, 0 };
+    BitstreamIn_t p_in = { &p, 8, 0 };
     uint8_t outbuffer[] = {0, 0, 0, 0, 0, 0, 0, 0};
-    BitstreamOut out = {outbuffer, 0, 0};
+    BitstreamOut_t out = {outbuffer, 0, 0};
     permute(&p_in, zCaret, 0, 4, &out); //returns 48 bits? or 6 8-bytes
 
     //Out is now a buffer containing six-bit bytes, should be 48 bits
@@ -387,9 +383,9 @@ static void testPermute(void) {
     printarr("input_perm", mres, 8);
 
     uint8_t p = ~pi[0];
-    BitstreamIn p_in = { &p, 8, 0 };
+    BitstreamIn_t p_in = { &p, 8, 0 };
     uint8_t outbuffer[] = {0, 0, 0, 0, 0, 0, 0, 0};
-    BitstreamOut out = {outbuffer, 0, 0};
+    BitstreamOut_t out = {outbuffer, 0, 0};
 
     permute(&p_in, x, 0, 4, &out);
 
@@ -708,7 +704,7 @@ void checkParity2(uint8_t* key) {
     uint8_t stored_parity = key[7];
     PrintAndLogEx(NORMAL, "Parity byte: 0x%02x", stored_parity);
     int i, byte, fails = 0;
-    BitstreamIn bits = {key, 56, 0};
+    BitstreamIn_t bits = {key, 56, 0};
     bool parity = 0;
 
     for (i = 0; i  < 56; i++) {
@@ -736,7 +732,7 @@ void modifyKey_put_parity_last(uint8_t * key, uint8_t* output) {
 
     uint8_t paritybits = 0;
     bool parity =0;
-    BitstreamOut out = { output, 0, 0};
+    BitstreamOut_t out = { output, 0, 0};
     unsigned int bbyte, bbit;
     for (bbyte = 0; bbyte <8; bbyte++ ) {
         for(bbit = 0; bbit < 7; bbit++) {
@@ -760,8 +756,8 @@ void modifyKey_put_parity_last(uint8_t * key, uint8_t* output) {
 
 void modifyKey_put_parity_allover(uint8_t * key, uint8_t* output) {
     bool parity =0;
-    BitstreamOut out = {output, 0, 0};
-    BitstreamIn in = {key, 0, 0};
+    BitstreamOut_t out = {output, 0, 0};
+    BitstreamIn_t in = {key, 0, 0};
     unsigned int bbyte, bbit;
     for (bbit = 0; bbit < 56; bbit++) {
         if (bbit > 0 && bbit % 7 == 0) {

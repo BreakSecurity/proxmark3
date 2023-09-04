@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2009 Michael Gernoth <michael at gernoth.net>
-// Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // UI utilities
 //-----------------------------------------------------------------------------
@@ -16,12 +23,11 @@
 #endif
 #include "ui.h"
 #include "commonutil.h"  // ARRAYLEN
-
 #include <stdio.h> // for Mingw readline
 #include <stdarg.h>
 #include <stdlib.h>
 
-#ifdef HAVE_READLINE
+#if defined(HAVE_READLINE)
 //Load readline after stdio.h
 #include <readline/readline.h>
 #endif
@@ -39,26 +45,34 @@
 #include <time.h>
 #include "emojis.h"
 #include "emojis_alt.h"
-session_arg_t session;
+session_arg_t g_session;
 
-double CursorScaleFactor = 1;
-char CursorScaleFactorUnit[11] = {0};
-double PlotGridX = 0, PlotGridY = 0, PlotGridXdefault = 64, PlotGridYdefault = 64;
-uint32_t CursorCPos = 0, CursorDPos = 0;
-double GraphPixelsPerPoint = 1.f; // How many visual pixels are between each sample point (x axis)
-static bool flushAfterWrite = 0;
-double GridOffset = 0;
-bool GridLocked = false;
-bool showDemod = true;
+double g_CursorScaleFactor = 1;
+char g_CursorScaleFactorUnit[11] = {0};
+double g_PlotGridX = 0, g_PlotGridY = 0, g_PlotGridXdefault = 64, g_PlotGridYdefault = 64;
+uint32_t g_CursorCPos = 0, g_CursorDPos = 0, g_GraphStop = 0;
+uint32_t g_GraphStart = 0; // Starting point/offset for the left side of the graph
+double g_GraphPixelsPerPoint = 1.f; // How many visual pixels are between each sample point (x axis)
+static bool flushAfterWrite = false;
+double g_GridOffset = 0;
+bool g_GridLocked = false;
 
-pthread_mutex_t print_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t g_print_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void fPrintAndLog(FILE *stream, const char *fmt, ...);
 
+#ifdef _WIN32
+#define MKDIR_CHK _mkdir(path)
+#else
+#define MKDIR_CHK mkdir(path, 0700)
+#endif
+
+
 // needed by flasher, so let's put it here instead of fileutils.c
 int searchHomeFilePath(char **foundpath, const char *subdir, const char *filename, bool create_home) {
-    if (foundpath == NULL)
+    if (foundpath == NULL) {
         return PM3_EINVARG;
+    }
 
     const char *user_path = get_my_user_directory();
     if (user_path == NULL) {
@@ -68,20 +82,21 @@ int searchHomeFilePath(char **foundpath, const char *subdir, const char *filenam
 
     size_t pathlen = strlen(user_path) + strlen(PM3_USER_DIRECTORY) + 1;
     char *path = calloc(pathlen, sizeof(char));
-    if (path == NULL)
+    if (path == NULL) {
         return PM3_EMALLOC;
+    }
 
     strcpy(path, user_path);
     strcat(path, PM3_USER_DIRECTORY);
-
     int result;
+
 #ifdef _WIN32
     struct _stat st;
     // Mingw _stat fails if path ends with /, so let's use a stripped path
-    if (path[strlen(path) - 1] == '/') {
-        path[strlen(path) - 1] = '\0';
+    if (str_endswith(path, PATHSEP)) {
+        memset(path + (strlen(path) - strlen(PATHSEP)), 0x00, strlen(PATHSEP));
         result = _stat(path, &st);
-        path[strlen(path)] = '/';
+        strcat(path, PATHSEP);
     } else {
         result = _stat(path, &st);
     }
@@ -89,19 +104,16 @@ int searchHomeFilePath(char **foundpath, const char *subdir, const char *filenam
     struct stat st;
     result = stat(path, &st);
 #endif
+
     if ((result != 0) && create_home) {
 
-#ifdef _WIN32
-        if (_mkdir(path))
-#else
-        if (mkdir(path, 0700))
-#endif
-        {
+        if (MKDIR_CHK) {
             fprintf(stderr, "Could not create user directory %s\n", path);
             free(path);
             return PM3_EFILE;
         }
     }
+
     if (subdir != NULL) {
         pathlen += strlen(subdir);
         char *tmp = realloc(path, pathlen * sizeof(char));
@@ -114,24 +126,20 @@ int searchHomeFilePath(char **foundpath, const char *subdir, const char *filenam
 
 #ifdef _WIN32
         // Mingw _stat fails if path ends with /, so let's use a stripped path
-        if (path[strlen(path) - 1] == '/') {
-            path[strlen(path) - 1] = '\0';
+        if (str_endswith(path, PATHSEP)) {
+            memset(path + (strlen(path) - strlen(PATHSEP)), 0x00, strlen(PATHSEP));
             result = _stat(path, &st);
-            path[strlen(path)] = '/';
+            strcat(path, PATHSEP);
         } else {
             result = _stat(path, &st);
         }
 #else
         result = stat(path, &st);
 #endif
+
         if ((result != 0) && create_home) {
 
-#ifdef _WIN32
-            if (_mkdir(path))
-#else
-            if (mkdir(path, 0700))
-#endif
-            {
+            if (MKDIR_CHK) {
                 fprintf(stderr, "Could not create user directory %s\n", path);
                 free(path);
                 return PM3_EFILE;
@@ -143,15 +151,18 @@ int searchHomeFilePath(char **foundpath, const char *subdir, const char *filenam
         *foundpath = path;
         return PM3_SUCCESS;
     }
+
     pathlen += strlen(filename);
     char *tmp = realloc(path, pathlen * sizeof(char));
     if (tmp == NULL) {
         //free(path);
         return PM3_EMALLOC;
     }
+
     path = tmp;
     strcat(path, filename);
     *foundpath = path;
+
     return PM3_SUCCESS;
 }
 
@@ -187,7 +198,7 @@ void PrintAndLogEx(logLevel_t level, const char *fmt, ...) {
         return;
 
     // skip HINT messages if client has hints turned off i.e. 'HINT 0'
-    if (session.show_hints == false && level == HINT)
+    if (g_session.show_hints == false && level == HINT)
         return;
 
     char prefix[40] = {0};
@@ -202,14 +213,14 @@ void PrintAndLogEx(logLevel_t level, const char *fmt, ...) {
                                   };
     switch (level) {
         case ERR:
-            if (session.emoji_mode == EMO_EMOJI)
+            if (g_session.emoji_mode == EMO_EMOJI)
                 strncpy(prefix,  "[" _RED_("!!") "] :rotating_light: ", sizeof(prefix) - 1);
             else
                 strncpy(prefix, "[" _RED_("!!") "] ", sizeof(prefix) - 1);
             stream = stderr;
             break;
         case FAILED:
-            if (session.emoji_mode == EMO_EMOJI)
+            if (g_session.emoji_mode == EMO_EMOJI)
                 strncpy(prefix, "[" _RED_("-") "] :no_entry: ", sizeof(prefix) - 1);
             else
                 strncpy(prefix, "[" _RED_("-") "] ", sizeof(prefix) - 1);
@@ -224,7 +235,7 @@ void PrintAndLogEx(logLevel_t level, const char *fmt, ...) {
             strncpy(prefix, "[" _GREEN_("+") "] ", sizeof(prefix) - 1);
             break;
         case WARNING:
-            if (session.emoji_mode == EMO_EMOJI)
+            if (g_session.emoji_mode == EMO_EMOJI)
                 strncpy(prefix, "[" _CYAN_("!") "] :warning:  ", sizeof(prefix) - 1);
             else
                 strncpy(prefix, "[" _CYAN_("!") "] ", sizeof(prefix) - 1);
@@ -233,7 +244,7 @@ void PrintAndLogEx(logLevel_t level, const char *fmt, ...) {
             strncpy(prefix, "[" _YELLOW_("=") "] ", sizeof(prefix) - 1);
             break;
         case INPLACE:
-            if (session.emoji_mode == EMO_EMOJI) {
+            if (g_session.emoji_mode == EMO_EMOJI) {
                 strncpy(prefix, spinner_emoji[PrintAndLogEx_spinidx], sizeof(prefix) - 1);
                 PrintAndLogEx_spinidx++;
                 if (PrintAndLogEx_spinidx >= ARRAYLEN(spinner_emoji))
@@ -288,8 +299,8 @@ void PrintAndLogEx(logLevel_t level, const char *fmt, ...) {
         if (level == INPLACE) {
             char buffer3[sizeof(buffer2)] = {0};
             char buffer4[sizeof(buffer2)] = {0};
-            memcpy_filter_ansi(buffer3, buffer2, sizeof(buffer2), !session.supports_colors);
-            memcpy_filter_emoji(buffer4, buffer3, sizeof(buffer3), session.emoji_mode);
+            memcpy_filter_ansi(buffer3, buffer2, sizeof(buffer2), !g_session.supports_colors);
+            memcpy_filter_emoji(buffer4, buffer3, sizeof(buffer3), g_session.emoji_mode);
             fprintf(stream, "\r%s", buffer4);
             fflush(stream);
         } else {
@@ -306,10 +317,10 @@ static void fPrintAndLog(FILE *stream, const char *fmt, ...) {
     char buffer2[MAX_PRINT_BUFFER] = {0};
     char buffer3[MAX_PRINT_BUFFER] = {0};
     // lock this section to avoid interlacing prints from different threads
-    pthread_mutex_lock(&print_lock);
+    pthread_mutex_lock(&g_print_lock);
     bool linefeed = true;
 
-    if (logging && session.incognito) {
+    if (logging && g_session.incognito) {
         logging = 0;
     }
     if ((g_printAndLog & PRINTANDLOG_LOG) && logging && !logfile) {
@@ -330,7 +341,7 @@ static void fPrintAndLog(FILE *stream, const char *fmt, ...) {
                 logging = 0;
             } else {
 
-                if (session.supports_colors) {
+                if (g_session.supports_colors) {
                     printf("["_YELLOW_("=")"] Session log " _YELLOW_("%s") "\n", my_logfile_path);
                 } else {
                     printf("[=] Session log %s\n", my_logfile_path);
@@ -367,10 +378,10 @@ static void fPrintAndLog(FILE *stream, const char *fmt, ...) {
         linefeed = false;
         buffer[strlen(buffer) - 1] = 0;
     }
-    bool filter_ansi = !session.supports_colors;
+    bool filter_ansi = !g_session.supports_colors;
     memcpy_filter_ansi(buffer2, buffer, sizeof(buffer), filter_ansi);
     if (g_printAndLog & PRINTANDLOG_PRINT) {
-        memcpy_filter_emoji(buffer3, buffer2, sizeof(buffer2), session.emoji_mode);
+        memcpy_filter_emoji(buffer3, buffer2, sizeof(buffer2), g_session.emoji_mode);
         fprintf(stream, "%s", buffer3);
         if (linefeed)
             fprintf(stream, "\n");
@@ -404,18 +415,22 @@ static void fPrintAndLog(FILE *stream, const char *fmt, ...) {
         fflush(stdout);
 
     //release lock
-    pthread_mutex_unlock(&print_lock);
+    pthread_mutex_unlock(&g_print_lock);
 }
 
 void SetFlushAfterWrite(bool value) {
     flushAfterWrite = value;
 }
 
+bool GetFlushAfterWrite(void) {
+    return flushAfterWrite;
+}
+
 void memcpy_filter_rlmarkers(void *dest, const void *src, size_t n) {
     uint8_t *rdest = (uint8_t *)dest;
     uint8_t *rsrc = (uint8_t *)src;
     uint16_t si = 0;
-    for (uint16_t i = 0; i < n; i++) {
+    for (size_t i = 0; i < n; i++) {
         if ((rsrc[i] == '\001') || (rsrc[i] == '\002'))
             // skip readline special markers
             continue;
@@ -429,7 +444,7 @@ void memcpy_filter_ansi(void *dest, const void *src, size_t n, bool filter) {
         uint8_t *rdest = (uint8_t *)dest;
         uint8_t *rsrc = (uint8_t *)src;
         uint16_t si = 0;
-        for (uint16_t i = 0; i < n; i++) {
+        for (size_t i = 0; i < n; i++) {
             if ((i < n - 1)
                     && (rsrc[i] == '\x1b')
                     && (rsrc[i + 1] >= 0x40)
@@ -516,12 +531,11 @@ void memcpy_filter_emoji(void *dest, const void *src, size_t n, emojiMode_t mode
         uint8_t emojified_token_length = 0;
         char *current_token = NULL;
         uint8_t current_token_length = 0;
-        char current_char;
         char *rdest = (char *)dest;
         char *rsrc = (char *)src;
         uint16_t si = 0;
-        for (uint16_t i = 0; i < n; i++) {
-            current_char = rsrc[i];
+        for (size_t i = 0; i < n; i++) {
+            char current_char = rsrc[i];
 
             if (current_token_length == 0) {
                 // starting a new token.
@@ -555,7 +569,9 @@ void memcpy_filter_emoji(void *dest, const void *src, size_t n, emojiMode_t mode
                 }
             }
         }
-        memcpy(rdest + si, current_token, current_token_length);
+        if (current_token_length > 0) {
+            memcpy(rdest + si, current_token, current_token_length);
+        }
     }
 }
 
@@ -630,11 +646,15 @@ void iceSimple_Filter(int *data, const size_t len, uint8_t k) {
 
 void print_progress(size_t count, uint64_t max, barMode_t style) {
     int cols = 100 + 35;
-#ifdef HAVE_READLINE
+#if defined(HAVE_READLINE)
     static int prev_cols = 0;
     int rows;
     rl_reset_screen_size(); // refresh Readline idea of the actual screen width
     rl_get_screen_size(&rows, &cols);
+
+    if (cols < 36)
+        return;
+
     (void) rows;
     if (prev_cols > cols) {
         PrintAndLogEx(NORMAL, _CLEAR_ _TOP_ "");
@@ -642,8 +662,6 @@ void print_progress(size_t count, uint64_t max, barMode_t style) {
     prev_cols = cols;
 #endif
     int width = cols - 35;
-    if (width < 1)
-        return;
 
 #define PERCENTAGE(V, T)   ((V * width) / T)
     // x/8 fractional part of the percentage
@@ -661,7 +679,7 @@ void print_progress(size_t count, uint64_t max, barMode_t style) {
         "\xe2\x96\x88",
     };
 
-    int mode = (session.emoji_mode == EMO_EMOJI);
+    int mode = (g_session.emoji_mode == EMO_EMOJI);
 
     const char *block[] = {"#", "\xe2\x96\x88"};
     // use a 3-byte space in emoji mode to ease computations
@@ -694,7 +712,7 @@ void print_progress(size_t count, uint64_t max, barMode_t style) {
     char *cbar = (char *)calloc(collen, sizeof(uint8_t));
 
     // Add colors
-    if (session.supports_colors) {
+    if (g_session.supports_colors) {
         int p60 = unit * (width * 60 / 100);
         int p20 = unit * (width * 20 / 100);
         snprintf(cbar,  collen,  _GREEN_("%.*s"), p60, bar);
@@ -704,18 +722,13 @@ void print_progress(size_t count, uint64_t max, barMode_t style) {
         snprintf(cbar,  collen,  "%s", bar);
     }
 
-    size_t olen = strlen(cbar) + 40;
-    char *out = (char *)calloc(olen, sizeof(uint8_t));
-
     switch (style) {
         case STYLE_BAR: {
-            sprintf(out, "%s", cbar);
-            printf("\b%c[2K\r[" _YELLOW_("=")"] %s", 27, out);
+            printf("\b%c[2K\r[" _YELLOW_("=")"] %s", 27, cbar);
             break;
         }
         case STYLE_MIXED: {
-            sprintf(out, "%s [ %zu mV / %2u V / %2u Vmax ]", cbar, count, (uint32_t)(count / 1000), (uint32_t)(max / 1000));
-            printf("\b%c[2K\r[" _YELLOW_("=")"] %s", 27, out);
+            printf("\b%c[2K\r[" _YELLOW_("=")"] %s [ %zu mV / %2u V / %2u Vmax ]", 27, cbar, count, (uint32_t)(count / 1000), (uint32_t)(max / 1000));
             break;
         }
         case STYLE_VALUE: {
@@ -724,7 +737,6 @@ void print_progress(size_t count, uint64_t max, barMode_t style) {
         }
     }
     fflush(stdout);
-    free(out);
     free(bar);
     free(cbar);
 }

@@ -1,11 +1,17 @@
 //-----------------------------------------------------------------------------
-// (c) 2009 Henryk Plötz <henryk@ploetzli.ch>
-//     2016 Iceman
-//     2018 AntiCat
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // LEGIC RF simulation code
 //-----------------------------------------------------------------------------
@@ -38,10 +44,10 @@ static crc_t legic_crc;
 //  - 100us for a 1 (RWD_TIME_1)
 //
 // The data dependent timing makes writing comprehensible code significantly
-// harder. The current aproach forwards the prng data based if there is data on
+// harder. The current approach forwards the prng data based if there is data on
 // air and time based, using GET_TICKS, during computational and wait periodes.
 //
-// To not have the necessity to calculate/guess exection time dependend timeouts
+// To not have the necessity to calculate/guess execution time dependent timeouts
 // tx_frame and rx_frame use a shared timestamp to coordinate tx and rx timeslots.
 //-----------------------------------------------------------------------------
 
@@ -73,16 +79,17 @@ static uint16_t rx_frame_from_fpga(void) {
             return AT91C_BASE_SSC->SSC_RHR;
         }
     }
+    return 0;
 }
 
 //-----------------------------------------------------------------------------
 // Demodulation (Reader)
 //-----------------------------------------------------------------------------
 
-// Returns a demedulated bit
+// Returns a demodulated bit
 //
 // The FPGA running xcorrelation samples the subcarrier at ~13.56 MHz. The mode
-// was initialy designed to receive BSPK/2-PSK. Hance, it reports an I/Q pair
+// was initially designed to receive BSPK/2-PSK. Hance, it reports an I/Q pair
 // every 4.7us (8 bits i and 8 bits q).
 //
 // The subcarrier amplitude can be calculated using Pythagoras sqrt(i^2 + q^2).
@@ -93,7 +100,7 @@ static uint16_t rx_frame_from_fpga(void) {
 // and averages the next (most stable) 8 samples. The final 8 samples are dropped
 // also.
 //
-// The demodulated should be alligned to the bit period by the caller. This is
+// The demodulated should be aligned to the bit period by the caller. This is
 // done in rx_bit and rx_ack.
 //
 // Note: The demodulator would be drifting (18.9us * 5 != 100us), rx_frame
@@ -416,7 +423,7 @@ void LegicRfInfo(void) {
     // establish shared secret and detect card type
     uint8_t card_type = setup_phase(0x01);
     if (init_card(card_type, &card) != PM3_SUCCESS) {
-        reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+        reply_ng(CMD_HF_LEGIC_INFO, PM3_EINIT, NULL, 0);
         goto OUT;
     }
 
@@ -424,7 +431,7 @@ void LegicRfInfo(void) {
     for (uint8_t i = 0; i < sizeof(card.uid); ++i) {
         int16_t byte = read_byte(i, card.cmdsize);
         if (byte == -1) {
-            reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+            reply_ng(CMD_HF_LEGIC_INFO, PM3_EFAILED, NULL, 0);
             goto OUT;
         }
         card.uid[i] = byte & 0xFF;
@@ -434,12 +441,12 @@ void LegicRfInfo(void) {
     int16_t mcc = read_byte(4, card.cmdsize);
     int16_t calc_mcc = CRC8Legic(card.uid, 4);
     if (mcc != calc_mcc) {
-        reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+        reply_ng(CMD_HF_LEGIC_INFO, PM3_ESOFT, NULL, 0);
         goto OUT;
     }
 
     // OK
-    reply_mix(CMD_ACK, 1, 0, 0, (uint8_t *)&card, sizeof(legic_card_select_t));
+    reply_ng(CMD_HF_LEGIC_INFO, PM3_SUCCESS, (uint8_t *)&card, sizeof(legic_card_select_t));
 
 OUT:
     switch_off();
@@ -491,7 +498,7 @@ void LegicRfReader(uint16_t offset, uint16_t len, uint8_t iv) {
     // establish shared secret and detect card type
     uint8_t card_type = setup_phase(iv);
     if (init_card(card_type, &card) != PM3_SUCCESS) {
-        reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+        reply_ng(CMD_HF_LEGIC_READER, PM3_EINIT, NULL, 0);
         goto OUT;
     }
 
@@ -503,7 +510,7 @@ void LegicRfReader(uint16_t offset, uint16_t len, uint8_t iv) {
     for (uint16_t i = 0; i < len; ++i) {
         int16_t byte = read_byte(offset + i, card.cmdsize);
         if (byte == -1) {
-            reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+            reply_ng(CMD_HF_LEGIC_READER, PM3_EFAILED, NULL, 0);
             goto OUT;
         }
         legic_mem[i] = byte;
@@ -514,27 +521,27 @@ void LegicRfReader(uint16_t offset, uint16_t len, uint8_t iv) {
     }
 
     // OK
-    reply_mix(CMD_ACK, 1, len, 0, 0, 0);
+    reply_ng(CMD_HF_LEGIC_READER, PM3_SUCCESS, (uint8_t *)&len, sizeof(len));
 
 OUT:
     switch_off();
     StopTicks();
 }
 
-void LegicRfWriter(uint16_t offset, uint16_t len, uint8_t iv, uint8_t *data) {
+void LegicRfWriter(uint16_t offset, uint16_t len, uint8_t iv, const uint8_t *data) {
     // configure ARM and FPGA
     init_reader();
 
     // uid is not writeable
     if (offset <= WRITE_LOWERLIMIT) {
-        reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+        reply_ng(CMD_HF_LEGIC_WRITER, PM3_EINVARG, NULL, 0);
         goto OUT;
     }
 
     // establish shared secret and detect card type
     uint8_t card_type = setup_phase(iv);
     if (init_card(card_type, &card) != PM3_SUCCESS) {
-        reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+        reply_ng(CMD_HF_LEGIC_WRITER, PM3_EINIT, NULL, 0);
         goto OUT;
     }
 
@@ -547,13 +554,13 @@ void LegicRfWriter(uint16_t offset, uint16_t len, uint8_t iv, uint8_t *data) {
     while (len-- > 0 && BUTTON_PRESS() == false) {
         if (write_byte(len + offset, data[len], card.addrsize) == false) {
             Dbprintf("operation failed | %02X | %02X | %02X", len + offset, len, data[len]);
-            reply_mix(CMD_ACK, 0, 0, 0, 0, 0);
+            reply_ng(CMD_HF_LEGIC_WRITER, PM3_EFAILED, NULL, 0);
             goto OUT;
         }
     }
 
     // OK
-    reply_mix(CMD_ACK, 1, len, 0, 0, 0);
+    reply_ng(CMD_HF_LEGIC_WRITER, PM3_SUCCESS, (uint8_t *)&len, sizeof(len));
 
 OUT:
     switch_off();

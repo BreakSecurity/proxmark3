@@ -1,4 +1,19 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
+//
 // Pretend to be an ISO 14443 tag. We will do this by alternately short-
 // circuiting and open-circuiting the antenna coil, with the tri-state
 // pins.
@@ -17,21 +32,23 @@
 //-----------------------------------------------------------------------------
 
 module hi_simulate(
-    ck_1356meg,
-    pwr_lo, pwr_hi, pwr_oe1, pwr_oe2, pwr_oe3, pwr_oe4,
-    adc_d, adc_clk,
-    ssp_frame, ssp_din, ssp_dout, ssp_clk,
-    dbg,
-    mod_type
+    input ck_1356meg,
+    input [7:0] adc_d,
+    input [3:0] mod_type,
+    input ssp_dout,
+
+    output reg ssp_din,
+    output reg ssp_frame,
+    output reg ssp_clk,
+    output adc_clk,
+    output pwr_lo,
+    output pwr_hi,
+    output pwr_oe1,
+    output pwr_oe2,
+    output pwr_oe3,
+    output pwr_oe4,
+    output debug
 );
-    input ck_1356meg;
-    output pwr_lo, pwr_hi, pwr_oe1, pwr_oe2, pwr_oe3, pwr_oe4;
-    input [7:0] adc_d;
-    output adc_clk;
-    input ssp_dout;
-    output ssp_frame, ssp_din, ssp_clk;
-    output dbg;
-    input [3:0] mod_type;
 
 // Power amp goes between LOW and tri-state, so pwr_hi (and pwr_lo) can
 // always be low.
@@ -42,7 +59,7 @@ assign pwr_lo = 1'b0;        // LF antenna connected to GND
 assign pwr_oe2 = 1'b0;
 
 assign adc_clk = ck_1356meg;
-assign dbg = ssp_frame;
+assign debug = ssp_frame;
 
 // The comparator with hysteresis on the output from the peak detector.
 reg after_hysteresis;
@@ -71,7 +88,6 @@ begin
     end
 end
 
-
 // Divide 13.56 MHz to produce various frequencies for SSP_CLK
 // and modulation.
 reg [8:0] ssp_clk_divider;
@@ -79,25 +95,21 @@ reg [8:0] ssp_clk_divider;
 always @(negedge adc_clk)
     ssp_clk_divider <= (ssp_clk_divider + 1);
 
-reg ssp_clk;
-
 always @(negedge adc_clk)
 begin
     if (mod_type == `FPGA_HF_SIMULATOR_MODULATE_424K_8BIT)
-      // Get bit every at 53KHz (every 8th carrier bit of 424kHz)
-      ssp_clk <= ~ssp_clk_divider[7];
+        // Get bit every at 53KHz (every 8th carrier bit of 424kHz)
+        ssp_clk <= ~ssp_clk_divider[7];
     else if (mod_type == `FPGA_HF_SIMULATOR_MODULATE_212K)
-      // Get next bit at 212kHz
-      ssp_clk <= ~ssp_clk_divider[5];
+        // Get next bit at 212kHz
+        ssp_clk <= ~ssp_clk_divider[5];
     else
-      // Get next bit at 424kHz
-      ssp_clk <= ~ssp_clk_divider[4];
+        // Get next bit at 424kHz
+        ssp_clk <= ~ssp_clk_divider[4];
 end
-
 
 // Produce the byte framing signal; the phase of this signal
 // is arbitrary, because it's just a bit stream in this module.
-reg ssp_frame;
 always @(negedge adc_clk)
 begin
     if (mod_type == `FPGA_HF_SIMULATOR_MODULATE_212K)
@@ -116,9 +128,7 @@ begin
     end
 end
 
-
 // Synchronize up the after-hysteresis signal, to produce DIN.
-reg ssp_din;
 always @(posedge ssp_clk)
     ssp_din = after_hysteresis;
 
@@ -134,9 +144,7 @@ always @(*)
     else if(mod_type == `FPGA_HF_SIMULATOR_MODULATE_424K || mod_type == `FPGA_HF_SIMULATOR_MODULATE_424K_8BIT)
         modulating_carrier <= ssp_dout & ssp_clk_divider[4]; // switch 424kHz modulation on/off
     else
-        modulating_carrier <= 1'b0;                           // yet unused
-
-
+        modulating_carrier <= 1'b0;                          // yet unused
 
 // Load modulation. Toggle only one of these, since we are already producing much deeper
 // modulation than a real tag would.

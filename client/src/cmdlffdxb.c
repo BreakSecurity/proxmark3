@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency fdx-b tag commands
 // Differential Biphase, rf/32, 128 bits (known)
@@ -199,11 +208,11 @@ static int CmdFDXBdemodBI(const char *Cmd) {
     PrintAndLogEx(SUCCESS, "Reserved/RFU:      %u", reservedCode);
     PrintAndLogEx(SUCCESS, "Animal Tag:        %s", animalBit ? _YELLOW_("True") : "False");
     PrintAndLogEx(SUCCESS, "Has extended data: %s [0x%X]", dataBlockBit ? _YELLOW_("True") : "False", extended);
-    PrintAndLogEx(SUCCESS, "CRC:           0x%04X - [%04X] - %s", crc_16, calcCrc, (calcCrc == crc_16) ? _GREEN_("Passed") : _RED_("Fail") );
+    PrintAndLogEx(SUCCESS, "CRC:           0x%04X - [%04X] - %s", crc_16, calcCrc, (calcCrc == crc_16) ? _GREEN_("ok") : _RED_("fail") );
 
     if (g_debugMode) {
         PrintAndLogEx(DEBUG, "Start marker %d;   Size %d", preambleIndex, size);
-        char *bin = sprint_bin_break(bs, size, 16);
+        char *bin = sprint_bytebits_bin_break(bs, size, 16);
         PrintAndLogEx(DEBUG, "DEBUG BinStream:\n%s", bin);
     }
     return PM3_SUCCESS;
@@ -213,7 +222,7 @@ static int CmdFDXBdemodBI(const char *Cmd) {
 // For the country part:
 // wget -q -O - "https://en.wikipedia.org/w/index.php?title=List_of_ISO_3166_country_codes&action=raw" | awk '/id=/{match($0, /\[\[([^\]|]*)/, a); name=a[1];getline;getline;getline;getline;getline;match($0, /numeric#([0-9]*)/, a);num=a[1]; if (num != "") {printf "    { %3u, \"%s\" },\n", num, name}}'
 // Beware the bottom of the list contains also Manufacturers list
-const fdxbCountryMapping_t fdxbCountryMapping[] = {
+static const fdxbCountryMapping_t fdxbCountryMapping[] = {
     {   4, "Afghanistan" },
     {   8, "Albania" },
     {  12, "Algeria" },
@@ -485,8 +494,8 @@ int demodFDXB(bool verbose) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - FDX-B ASKbiphaseDemod failed");
         return PM3_ESOFT;
     }
-    size_t size = DemodBufferLen;
-    int preambleIndex = detectFDXB(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int preambleIndex = detectFDXB(g_DemodBuffer, &size);
     if (preambleIndex < 0) {
 
         if (preambleIndex == -1)
@@ -500,13 +509,13 @@ int demodFDXB(bool verbose) {
         return PM3_ESOFT;
     }
 
-    // set and leave DemodBuffer intact
-    setDemodBuff(DemodBuffer, 128, preambleIndex);
+    // set and leave g_DemodBuffer intact
+    setDemodBuff(g_DemodBuffer, 128, preambleIndex);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (preambleIndex * g_DemodClock));
 
 
     // remove marker bits (1's every 9th digit after preamble) (pType = 2)
-    size = removeParity(DemodBuffer, 11, 9, 2, 117);
+    size = removeParity(g_DemodBuffer, 11, 9, 2, 117);
     if (size != 104) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - FDX-B error removeParity: %zu", size);
         return PM3_ESOFT;
@@ -515,42 +524,42 @@ int demodFDXB(bool verbose) {
     //got a good demod
     uint8_t offset;
     // ISO: bits 27..64
-    uint64_t NationalCode = ((uint64_t)(bytebits_to_byteLSBF(DemodBuffer + 32, 6)) << 32) | bytebits_to_byteLSBF(DemodBuffer, 32);
+    uint64_t NationalCode = ((uint64_t)(bytebits_to_byteLSBF(g_DemodBuffer + 32, 6)) << 32) | bytebits_to_byteLSBF(g_DemodBuffer, 32);
 
     offset = 38;
     // ISO: bits 17..26
-    uint16_t countryCode = bytebits_to_byteLSBF(DemodBuffer + offset, 10);
+    uint16_t countryCode = bytebits_to_byteLSBF(g_DemodBuffer + offset, 10);
 
     offset += 10;
     // ISO: bits 16
-    uint8_t dataBlockBit = DemodBuffer[offset];
+    uint8_t dataBlockBit = g_DemodBuffer[offset];
 
     offset++;
     // ISO: bits 15
-    uint8_t rudiBit = DemodBuffer[offset];
+    uint8_t rudiBit = g_DemodBuffer[offset];
 
     offset++;
     // ISO: bits 10..14
-    uint32_t reservedCode = bytebits_to_byteLSBF(DemodBuffer + offset, 5);
+    uint32_t reservedCode = bytebits_to_byteLSBF(g_DemodBuffer + offset, 5);
 
     offset += 5;
     // ISO: bits 5..9
-    uint32_t userInfo = bytebits_to_byteLSBF(DemodBuffer + offset, 5);
+    uint32_t userInfo = bytebits_to_byteLSBF(g_DemodBuffer + offset, 5);
 
     offset += 5;
     // ISO: bits 2..4
-    uint32_t replacementNr = bytebits_to_byteLSBF(DemodBuffer + offset, 3);
+    uint32_t replacementNr = bytebits_to_byteLSBF(g_DemodBuffer + offset, 3);
 
     offset += 3;
-    uint8_t animalBit = DemodBuffer[offset];
+    uint8_t animalBit = g_DemodBuffer[offset];
 
     offset++;
-    uint16_t crc = bytebits_to_byteLSBF(DemodBuffer + offset, 16);
+    uint16_t crc = bytebits_to_byteLSBF(g_DemodBuffer + offset, 16);
 
     offset += 16;
-    uint32_t extended = bytebits_to_byteLSBF(DemodBuffer + offset, 24);
+    uint32_t extended = bytebits_to_byteLSBF(g_DemodBuffer + offset, 24);
 
-    uint64_t rawid = (uint64_t)(bytebits_to_byte(DemodBuffer, 32)) << 32 | bytebits_to_byte(DemodBuffer + 32, 32);
+    uint64_t rawid = (uint64_t)(bytebits_to_byte(g_DemodBuffer, 32)) << 32 | bytebits_to_byte(g_DemodBuffer + 32, 32);
     uint8_t raw[8];
     num_to_bytes(rawid, 8, raw);
 
@@ -572,13 +581,13 @@ int demodFDXB(bool verbose) {
 
     uint8_t c[] = {0, 0};
     compute_crc(CRC_11784, raw, sizeof(raw), &c[0], &c[1]);
-    PrintAndLogEx(SUCCESS, "CRC-16             0x%04X (%s)", crc, (crc == (c[1] << 8 | c[0])) ? _GREEN_("ok") : _RED_("fail"));
+    PrintAndLogEx(SUCCESS, "CRC-16             0x%04X ( %s )", crc, (crc == (c[1] << 8 | c[0])) ? _GREEN_("ok") : _RED_("fail"));
     // iceman: crc doesn't protect the extended data?
     PrintAndLogEx(SUCCESS, "Raw                " _GREEN_("%s"), sprint_hex(raw, 8));
 
     if (g_debugMode) {
         PrintAndLogEx(DEBUG, "Start marker %d;   Size %zu", preambleIndex, size);
-        char *bin = sprint_bin_break(DemodBuffer, size, 16);
+        char *bin = sprint_bytebits_bin_break(g_DemodBuffer, size, 16);
         PrintAndLogEx(DEBUG, "DEBUG bin stream:\n%s", bin);
     }
 
@@ -645,8 +654,8 @@ static int CmdFdxBReader(const char *Cmd) {
 
     config.verbose = false;
 
-    int16_t old_div = config.divisor;
     int16_t curr_div = config.divisor;
+    int16_t old_div = curr_div;
 
     if (cm) {
         PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to exit");
@@ -694,10 +703,10 @@ static int CmdFdxBClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf fdxb clone",
                   "clone a FDX-B tag to a T55x7, Q5/T5555 or EM4305/4469 tag.",
-                  "lf fdxb clone --country 999 --national 1337 --animal\n"
-                  "lf fdxb clone --country 999 --national 1337 --extended 016A\n"
-                  "lf fdxb clone --q5 --country 999 --national 1337   -> encode for Q5/T5555 tag\n"
-                  "lf fdxb clone --em --country 999 --national 1337   -> encode for EM4305/4469"
+                  "lf fdxb clone --country 999 --national 1337 --animal        -> encode for T55x7 tag, with animal bit\n"
+                  "lf fdxb clone --country 999 --national 1337 --extended 016A -> encode for T55x7 tag, with extended data\n"
+                  "lf fdxb clone --country 999 --national 1337 --q5            -> encode for Q5/T5555 tag\n"
+                  "lf fdxb clone --country 999 --national 1337 --em            -> encode for EM4305/4469"
                  );
 
     void *argtable[] = {

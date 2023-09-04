@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Presco tag commands
 //-----------------------------------------------------------------------------
@@ -53,7 +62,7 @@ static int getWiegandFromPrintedPresco(void *arr,  uint32_t *fullcode) {
 
         *fullcode += val;
 
-        // last digit is only added, not multipled.
+        // last digit is only added, not multiplied.
         if (i < strlen(s) - 1)
             *fullcode *= 12;
     }
@@ -77,8 +86,8 @@ int demodPresco(bool verbose) {
         PrintAndLogEx(DEBUG, "DEBUG: Error Presco ASKDemod failed");
         return PM3_ESOFT;
     }
-    size_t size = DemodBufferLen;
-    int ans = detectPresco(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int ans = detectPresco(g_DemodBuffer, &size);
     if (ans < 0) {
         if (ans == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - Presco: too few bits found");
@@ -90,14 +99,14 @@ int demodPresco(bool verbose) {
             PrintAndLogEx(DEBUG, "DEBUG: Error - Presco: ans: %d", ans);
         return PM3_ESOFT;
     }
-    setDemodBuff(DemodBuffer, 128, ans);
+    setDemodBuff(g_DemodBuffer, 128, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
-    uint32_t raw3 = bytebits_to_byte(DemodBuffer + 64, 32);
-    uint32_t raw4 = bytebits_to_byte(DemodBuffer + 96, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
+    uint32_t raw3 = bytebits_to_byte(g_DemodBuffer + 64, 32);
+    uint32_t raw4 = bytebits_to_byte(g_DemodBuffer + 96, 32);
     uint32_t fullcode = raw4;
     uint32_t usercode = fullcode & 0x0000FFFF;
     uint32_t sitecode = (fullcode >> 24) & 0x000000FF;
@@ -161,7 +170,7 @@ static int CmdPrescoClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf presco clone",
                   "clone a presco tag to a T55x7, Q5/T5555 or EM4305/4469 tag.",
-                  "lf presco clone -d 018363467\n"
+                  "lf presco clone -d 018363467           -> encode for T55x7 tag\n"
                   "lf presco clone -d 018363467 --q5      -> encode for Q5/T5555 tag\n"
                   "lf presco clone -d 018363467 --em      -> encode for EM4305/4469"
                  );

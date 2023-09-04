@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency KERI tag commands
 // PSK1, RF/128, RF/2, 64 bits long
@@ -29,13 +38,13 @@ typedef enum  {Scramble = 0, Descramble = 1} KeriMSScramble_t;
 
 static int CmdKeriMSScramble(KeriMSScramble_t Action, uint32_t *FC, uint32_t *ID, uint32_t *CardID) {
     // 255 = Not used/Unknown other values are the bit offset in the ID/FC values
-    uint8_t CardToID [] = { 255, 255, 255, 255, 13, 12, 20,  5, 16,  6, 21, 17,  8, 255,  0,  7,
-                            10, 15, 255, 11,  4,  1, 255, 18, 255, 19,  2, 14,  3,  9, 255, 255
-                          };
+    const uint8_t CardToID [] = { 255, 255, 255, 255, 13, 12, 20,  5, 16,  6, 21, 17,  8, 255,  0,  7,
+                                  10, 15, 255, 11,  4,  1, 255, 18, 255, 19,  2, 14,  3,  9, 255, 255
+                                };
 
-    uint8_t CardToFC [] = { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,  0, 255, 255,
-                            255, 255,  2, 255, 255, 255,  3, 255,  4, 255, 255, 255, 255, 255,  1, 255
-                          };
+    const uint8_t CardToFC [] = { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,  0, 255, 255,
+                                  255, 255,  2, 255, 255, 255,  3, 255,  4, 255, 255, 255, 255, 255,  1, 255
+                                };
 
     uint8_t card_idx; // 0 - 31
 
@@ -105,8 +114,8 @@ int demodKeri(bool verbose) {
     }
 
     bool invert = false;
-    size_t size = DemodBufferLen;
-    int idx = detectKeri(DemodBuffer, &size, &invert);
+    size_t size = g_DemodBufferLen;
+    int idx = detectKeri(g_DemodBuffer, &size, &invert);
     if (idx < 0) {
         if (idx == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - KERI: too few bits found");
@@ -119,7 +128,7 @@ int demodKeri(bool verbose) {
 
         return PM3_ESOFT;
     }
-    setDemodBuff(DemodBuffer, size, idx);
+    setDemodBuff(g_DemodBuffer, size, idx);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (idx * g_DemodClock));
 
     /*
@@ -143,22 +152,22 @@ int demodKeri(bool verbose) {
     uint32_t fc = 0;
     uint32_t cardid = 0;
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
 
     if (invert) {
         PrintAndLogEx(INFO, "Had to Invert - probably KERI");
         for (size_t i = 0; i < size; i++)
-            DemodBuffer[i] ^= 1;
+            g_DemodBuffer[i] ^= 1;
 
-        raw1 = bytebits_to_byte(DemodBuffer, 32);
-        raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
+        raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+        raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
 
         CmdPrintDemodBuff("-x");
     }
 
     //get internal id
-    // uint32_t ID = bytebits_to_byte(DemodBuffer + 29, 32);
+    // uint32_t ID = bytebits_to_byte(g_DemodBuffer + 29, 32);
     // Due to the 3 sync bits being at the start of the capture
     // We can take the last 32bits as the internal ID.
     uint32_t ID = raw2;
@@ -391,7 +400,7 @@ int detectKeri(uint8_t *dest, size_t *size, bool *invert) {
         found_size = *size;
         // if didn't find preamble try again inverting
         uint8_t preamble_i[] = {0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0};
-        if (!preambleSearch(DemodBuffer, preamble_i, sizeof(preamble_i), &found_size, &startIdx))
+        if (!preambleSearch(g_DemodBuffer, preamble_i, sizeof(preamble_i), &found_size, &startIdx))
             return -2;
 
         *invert ^= 1;

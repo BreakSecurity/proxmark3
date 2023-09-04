@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2020 tharexde
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency EM4x50 commands
 //-----------------------------------------------------------------------------
@@ -19,6 +27,7 @@
 #include "BigBuf.h"
 #include "spiffs.h"
 #include "appmain.h" // tear
+#include "bruteforce.h"
 
 // Sam7s has several timers, we will use the source TIMER_CLOCK1 (aka AT91C_TC_CLKS_TIMER_DIV1_CLOCK)
 // TIMER_CLOCK1 = MCK/2, MCK is running at 48 MHz, Timer is running at 48/2 = 24 MHz
@@ -63,18 +72,18 @@
 #define EM4X50_TAG_MAX_NO_BYTES             136
 #define EM4X50_TIMEOUT_PULSE_EVAL           2500
 
-int gHigh = 190;
-int gLow = 60;
+uint8_t g_High = 190;
+uint8_t g_Low = 60;
 
 // indication whether a previous login has been successful, so operations
 // that require authentication can be handled
-bool gLogin = false;
+bool g_Login = false;
 // WritePassword process in simulation mode is handled in a different way
 // compared to operations like read, write, login, so it is necessary to
 // to be able to identfiy it
-bool gWritePasswordProcess = false;
+bool g_WritePasswordProcess = false;
 // if reader sends a different password than "expected" -> save it
-uint32_t gPassword = 0;
+uint32_t g_Password = 0;
 
 // extract and check parities
 // return result of parity check and extracted plain data
@@ -173,7 +182,7 @@ void em4x50_setup_sim(void) {
 }
 
 // calculate signal properties (mean amplitudes) from measured data:
-// 32 amplitudes (maximum values) -> mean amplitude value -> gHigh -> gLow
+// 32 amplitudes (maximum values) -> mean amplitude value -> g_High -> g_Low
 static bool get_signalproperties(void) {
 
     bool signal_found = false;
@@ -224,8 +233,8 @@ static bool get_signalproperties(void) {
     sample_max_mean = sample_max_sum / no_periods;
 
     // set global envelope variables
-    gHigh = sample_ref + pct * (sample_max_mean - sample_ref) / 100;
-    gLow = sample_ref - pct * (sample_max_mean - sample_ref) / 100;
+    g_High = sample_ref + pct * (sample_max_mean - sample_ref) / 100;
+    g_Low = sample_ref - pct * (sample_max_mean - sample_ref) / 100;
 
     return true;
 }
@@ -245,7 +254,7 @@ static bool invalid_bit(void) {
     WaitUS(EM4X50_T_TAG_QUARTER_PERIOD * CYCLES2MUSEC);
 
     // bit in "undefined" state?
-    if (sample <= gHigh && sample >= gLow)
+    if (sample <= g_High && sample >= g_Low)
         return true;
 
     return false;
@@ -259,7 +268,7 @@ static uint32_t get_pulse_length(void) {
 
     volatile uint8_t sample = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
 
-    while (sample > gLow && (timeout--))
+    while (sample > g_Low && (timeout--))
         sample = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
 
     if (timeout <= 0)
@@ -268,14 +277,14 @@ static uint32_t get_pulse_length(void) {
     tval = GetTicks();
     timeout = EM4X50_TIMEOUT_PULSE_EVAL;
 
-    while (sample < gHigh && (timeout--))
+    while (sample < g_High && (timeout--))
         sample = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
 
     if (timeout <= 0)
         return 0;
 
     timeout = EM4X50_TIMEOUT_PULSE_EVAL;
-    while (sample > gLow && (timeout--))
+    while (sample > g_Low && (timeout--))
         sample = (uint8_t)AT91C_BASE_SSC->SSC_RHR;
 
     if (timeout <= 0)
@@ -443,7 +452,7 @@ static int find_double_listen_window(bool bcommand) {
     return PM3_EFAILED;
 }
 
-// function is used to check wether a tag on the proxmark is an
+// function is used to check whether a tag on the proxmark is an
 // EM4x50 tag or not -> speed up "lf search" process
 static bool find_em4x50_tag(void) {
     return find_single_listen_window();
@@ -458,7 +467,7 @@ static int request_receive_mode(void) {
 
 // returns true if signal structue corresponds to ACK, anything else is
 // counted as NAK (-> false)
-// Only relevant for pasword writing function:
+// Only relevant for password writing function:
 // If <bliw> is true then within the single listen window right after the
 // ack signal a RM request has to be sent.
 static bool check_ack(bool bliw) {
@@ -617,19 +626,28 @@ static int login(uint32_t password) {
             return PM3_SUCCESS;
 
     } else {
-        if (DBGLEVEL >= DBG_DEBUG)
+        if (g_dbglevel >= DBG_DEBUG)
             Dbprintf("error in command request");
     }
 
     return PM3_EFAILED;
 }
 
-// searching for password in given range
-static bool brute(uint32_t start, uint32_t stop, uint32_t *pwd) {
+// searching for password using chosen bruteforce algorithm
+static bool brute(const em4x50_data_t *etd, uint32_t *pwd) {
+
+    generator_context_t ctx;
     bool pwd_found = false;
+    int generator_ret = 0;
     int cnt = 0;
 
-    for (*pwd = start; *pwd <= stop; (*pwd)++) {
+    bf_generator_init(&ctx, etd->bruteforce_mode);
+
+    if (etd->bruteforce_mode == BRUTEFORCE_MODE_CHARSET)
+        bf_generator_set_charset(&ctx, etd->bruteforce_charset);
+
+    while ((generator_ret = bf_generate32(&ctx)) == GENERATOR_NEXT) {
+        *pwd = ctx.current_key32;
 
         WDT_HIT();
 
@@ -676,42 +694,46 @@ static bool brute(uint32_t start, uint32_t stop, uint32_t *pwd) {
 }
 
 // login into EM4x50
-void em4x50_login(uint32_t *password) {
+void em4x50_login(const uint32_t *password, bool ledcontrol) {
     em4x50_setup_read();
 
     int status = PM3_EFAILED;
-    LED_C_ON();
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
-        LED_C_OFF();
-        LED_D_ON();
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
         status = login(*password);
     }
 
-    LEDsoff();
-    lf_finalize();
+    if (ledcontrol) LEDsoff();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_LOGIN, status, NULL, 0);
 }
 
-// envoke password search
-void em4x50_brute(em4x50_data_t *etd) {
+// invoke password search
+void em4x50_brute(const em4x50_data_t *etd, bool ledcontrol) {
     em4x50_setup_read();
 
     bool bsuccess = false;
     uint32_t pwd = 0x0;
-    LED_C_ON();
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
-        LED_C_OFF();
-        LED_D_ON();
-        bsuccess = brute(etd->password1, etd->password2, &pwd);
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
+        bsuccess = brute(etd, &pwd);
     }
 
-    LEDsoff();
-    lf_finalize();
+    if (ledcontrol) LEDsoff();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_BRUTE, bsuccess ? PM3_SUCCESS : PM3_EFAILED, (uint8_t *)(&pwd), sizeof(pwd));
 }
 
 // check passwords from dictionary content in flash memory
-void em4x50_chk(uint8_t *filename) {
+void em4x50_chk(const char *filename, bool ledcontrol) {
     int status = PM3_EFAILED;
     uint32_t pwd = 0x0;
 
@@ -721,23 +743,25 @@ void em4x50_chk(uint8_t *filename) {
 
     int changed = rdv40_spiffs_lazy_mount();
     uint16_t pwd_count = 0;
-    uint32_t size = size_in_spiffs((char *)filename);
+    uint32_t size = size_in_spiffs(filename);
     pwd_count = size / 4;
     uint8_t *pwds = BigBuf_malloc(size);
 
-    rdv40_spiffs_read_as_filetype((char *)filename, pwds, size, RDV40_SPIFFS_SAFETY_SAFE);
+    rdv40_spiffs_read_as_filetype(filename, pwds, size, RDV40_SPIFFS_SAFETY_SAFE);
 
     if (changed)
         rdv40_spiffs_lazy_unmount();
 
     em4x50_setup_read();
 
-    // set gHigh and gLow
-    LED_C_ON();
+    // set g_High and g_Low
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
 
-        LED_C_OFF();
-        LED_D_ON();
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
 
         // try to login with current password
         for (int i = 0; i < pwd_count; i++) {
@@ -765,8 +789,8 @@ void em4x50_chk(uint8_t *filename) {
 
 #endif
 
-    LEDsoff();
-    lf_finalize();
+    if (ledcontrol) LEDsoff();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_CHK, status, (uint8_t *)&pwd, sizeof(pwd));
 }
 
@@ -781,7 +805,7 @@ static int reset(void) {
             return PM3_SUCCESS;
 
     } else {
-        if (DBGLEVEL >= DBG_DEBUG)
+        if (g_dbglevel >= DBG_DEBUG)
             Dbprintf("error in command request");
     }
 
@@ -808,7 +832,7 @@ int standard_read(int *now, uint32_t *words) {
         *now -= fwr;
 
     } else {
-        if (DBGLEVEL >= DBG_DEBUG)
+        if (g_dbglevel >= DBG_DEBUG)
             Dbprintf("didn't find a listen window");
     }
 
@@ -841,7 +865,7 @@ static int selective_read(uint32_t addresses, uint32_t *words) {
                     return status;
 
     } else {
-        if (DBGLEVEL >= DBG_DEBUG)
+        if (g_dbglevel >= DBG_DEBUG)
             Dbprintf("error in command request");
     }
 
@@ -849,18 +873,20 @@ static int selective_read(uint32_t addresses, uint32_t *words) {
 }
 
 // reads by using "selective read mode" -> bidirectional communication
-void em4x50_read(em4x50_data_t *etd) {
+void em4x50_read(const em4x50_data_t *etd, bool ledcontrol) {
     int status = PM3_EFAILED;
     uint32_t words[EM4X50_NO_WORDS] = {0x0};
 
     em4x50_setup_read();
 
-    // set gHigh and gLow
-    LED_C_ON();
+    // set g_High and g_Low
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
 
-        LED_C_OFF();
-        LED_D_ON();
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
 
         bool blogin = true;
 
@@ -873,23 +899,25 @@ void em4x50_read(em4x50_data_t *etd) {
             status = selective_read(etd->addresses, words);
     }
 
-    LEDsoff();
+    if (ledcontrol) LEDsoff();
     LOW(GPIO_SSC_DOUT);
-    lf_finalize();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_READ, status, (uint8_t *)words, EM4X50_TAG_MAX_NO_BYTES);
 }
 
 // collects as much information as possible via selective read mode
-void em4x50_info(em4x50_data_t *etd) {
+void em4x50_info(const em4x50_data_t *etd, bool ledcontrol) {
     int status = PM3_EFAILED;
     uint32_t words[EM4X50_NO_WORDS] = {0x0};
 
     em4x50_setup_read();
 
-    LED_C_ON();
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
-        LED_C_OFF();
-        LED_D_ON();
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
 
         bool blogin = true;
         // login with given password
@@ -902,29 +930,31 @@ void em4x50_info(em4x50_data_t *etd) {
         }
     }
 
-    LEDsoff();
-    lf_finalize();
+    if (ledcontrol) LEDsoff();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_INFO, status, (uint8_t *)words, EM4X50_TAG_MAX_NO_BYTES);
 }
 
 // reads data that tag transmits "voluntarily" -> standard read mode
-void em4x50_reader(void) {
+void em4x50_reader(bool ledcontrol) {
 
     int now = 0;
     uint32_t words[EM4X50_NO_WORDS] = {0x0};
 
     em4x50_setup_read();
 
-    LED_C_ON();
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
-        LED_C_OFF();
-        LED_D_ON();
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
         standard_read(&now, words);
     }
 
-    LEDsoff();
+    if (ledcontrol) LEDsoff();
     LOW(GPIO_SSC_DOUT);
-    lf_finalize();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_READER, now, (uint8_t *)words, 4 * now);
 }
 
@@ -964,7 +994,7 @@ static int write(uint32_t word, uint32_t addresses) {
             }
         }
     } else {
-        if (DBGLEVEL >= DBG_DEBUG)
+        if (g_dbglevel >= DBG_DEBUG)
             Dbprintf("error in command request");
     }
 
@@ -1013,7 +1043,7 @@ static int write_password(uint32_t password, uint32_t new_password) {
             }
         }
     } else {
-        if (DBGLEVEL >= DBG_DEBUG)
+        if (g_dbglevel >= DBG_DEBUG)
             Dbprintf("error in command request");
     }
 
@@ -1023,17 +1053,19 @@ static int write_password(uint32_t password, uint32_t new_password) {
 // write operation process for EM4x50 tag,
 // single word is written to given address, verified by selective read operation
 // wrong password -> return with PM3_EFAILED
-void em4x50_write(em4x50_data_t *etd) {
+void em4x50_write(const em4x50_data_t *etd, bool ledcontrol) {
     int status = PM3_EFAILED;
     uint32_t words[EM4X50_NO_WORDS] = {0x0};
 
     em4x50_setup_read();
 
-    LED_C_ON();
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
 
-        LED_C_OFF();
-        LED_D_ON();
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
 
         // if password is given try to login first
         status = PM3_SUCCESS;
@@ -1045,7 +1077,7 @@ void em4x50_write(em4x50_data_t *etd) {
             // write word to given address
             status = write(etd->word, etd->addresses);
             if (status == PM3_ETEAROFF) {
-                lf_finalize();
+                lf_finalize(ledcontrol);
                 return;
             }
 
@@ -1075,36 +1107,38 @@ void em4x50_write(em4x50_data_t *etd) {
         }
     }
 
-    LEDsoff();
-    lf_finalize();
+    if (ledcontrol) LEDsoff();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_WRITE, status, (uint8_t *)words, EM4X50_TAG_MAX_NO_BYTES);
 }
 
 // simple change of password
-void em4x50_writepwd(em4x50_data_t *etd) {
+void em4x50_writepwd(const em4x50_data_t *etd, bool ledcontrol) {
     int status = PM3_EFAILED;
 
     em4x50_setup_read();
 
-    LED_C_ON();
+    if (ledcontrol) LED_C_ON();
     if (get_signalproperties() && find_em4x50_tag()) {
 
-        LED_C_OFF();
-        LED_D_ON();
+        if (ledcontrol) {
+            LED_C_OFF();
+            LED_D_ON();
+        }
 
         // login and change password
         if (login(etd->password1) == PM3_SUCCESS) {
 
             status = write_password(etd->password1, etd->password2);
             if (status == PM3_ETEAROFF) {
-                lf_finalize();
+                lf_finalize(ledcontrol);
                 return;
             }
         }
     }
 
-    LEDsoff();
-    lf_finalize();
+    if (ledcontrol) LEDsoff();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_WRITEPWD, status, NULL, 0);
 }
 
@@ -1324,7 +1358,7 @@ static bool em4x50_sim_read_word(uint32_t *word) {
 }
 
 // check if reader requests receive mode (rm) by sending two zeros
-static int check_rm_request(uint32_t *tag) {
+static int check_rm_request(const uint32_t *tag, bool ledcontrol) {
 
     // look for first zero
     int bit = em4x50_sim_read_bit();
@@ -1334,11 +1368,11 @@ static int check_rm_request(uint32_t *tag) {
         bit = em4x50_sim_read_bit();
         if (bit == 0) {
 
-            LED_C_ON();
+            if (ledcontrol) LED_C_ON();
 
             // if command before was EM4X50_COMMAND_WRITE_PASSWORD
             // switch to separate process
-            if (gWritePasswordProcess) {
+            if (g_WritePasswordProcess) {
                 return EM4X50_COMMAND_WRITE_PASSWORD;
             } else {
                 // read mode request detected, get command from reader
@@ -1353,7 +1387,7 @@ static int check_rm_request(uint32_t *tag) {
 }
 
 // send single listen window in simulation mode
-static int em4x50_sim_send_listen_window(uint32_t *tag) {
+static int em4x50_sim_send_listen_window(const uint32_t *tag, bool ledcontrol) {
 
     SHORT_COIL();
     wait_cycles(EM4X50_T_TAG_HALF_PERIOD);
@@ -1365,7 +1399,7 @@ static int em4x50_sim_send_listen_window(uint32_t *tag) {
     wait_cycles(2 * EM4X50_T_TAG_FULL_PERIOD);
 
     OPEN_COIL();
-    int command = check_rm_request(tag);
+    int command = check_rm_request(tag, ledcontrol);
     if (command != PM3_SUCCESS) {
         return command;
     }
@@ -1426,7 +1460,7 @@ static void em4x50_sim_send_nak(void) {
 }
 
 // standard read mode process (simulation mode)
-static int em4x50_sim_handle_standard_read_command(uint32_t *tag) {
+static int em4x50_sim_handle_standard_read_command(const uint32_t *tag, bool ledcontrol) {
 
     // extract control data
     int fwr = reflect32(tag[EM4X50_CONTROL]) & 0xFF;        // first word read
@@ -1441,7 +1475,7 @@ static int em4x50_sim_handle_standard_read_command(uint32_t *tag) {
 
         WDT_HIT();
 
-        int res = em4x50_sim_send_listen_window(tag);
+        int res = em4x50_sim_send_listen_window(tag, ledcontrol);
 
         if (res != PM3_SUCCESS) {
             return res;
@@ -1449,12 +1483,12 @@ static int em4x50_sim_handle_standard_read_command(uint32_t *tag) {
 
         for (int i = fwr; i <= lwr; i++) {
 
-            res = em4x50_sim_send_listen_window(tag);
+            res = em4x50_sim_send_listen_window(tag, ledcontrol);
             if (res != PM3_SUCCESS) {
                 return res;
             }
 
-            if ((gLogin == false) && (i >= fwrp) && (i <= lwrp)) {
+            if ((g_Login == false) && (i >= fwrp) && (i <= lwrp)) {
                 em4x50_sim_send_word(0x00);
             } else {
                 em4x50_sim_send_word(reflect32(tag[i]));
@@ -1466,7 +1500,7 @@ static int em4x50_sim_handle_standard_read_command(uint32_t *tag) {
 }
 
 // selective read mode process (simulation mode)
-static int em4x50_sim_handle_selective_read_command(uint32_t *tag) {
+static int em4x50_sim_handle_selective_read_command(const uint32_t *tag, bool ledcontrol) {
 
     // read password
     uint32_t address = 0;
@@ -1496,20 +1530,20 @@ static int em4x50_sim_handle_selective_read_command(uint32_t *tag) {
 
         WDT_HIT();
 
-        int command = em4x50_sim_send_listen_window(tag);
+        int command = em4x50_sim_send_listen_window(tag, ledcontrol);
         if (command != PM3_SUCCESS) {
             return command;
         }
 
         for (int i = fwr; i <= lwr; i++) {
 
-            command = em4x50_sim_send_listen_window(tag);
+            command = em4x50_sim_send_listen_window(tag, ledcontrol);
             if (command != PM3_SUCCESS) {
                 return command;
             }
 
             // if not authenticated do not send read protected words
-            if ((gLogin == false) && (i >= fwrp) && (i <= lwrp)) {
+            if ((g_Login == false) && (i >= fwrp) && (i <= lwrp)) {
                 em4x50_sim_send_word(0x00);
             } else {
                 em4x50_sim_send_word(reflect32(tag[i]));
@@ -1521,7 +1555,7 @@ static int em4x50_sim_handle_selective_read_command(uint32_t *tag) {
 }
 
 // login process (simulation mode)
-static int em4x50_sim_handle_login_command(uint32_t *tag) {
+static int em4x50_sim_handle_login_command(const uint32_t *tag, bool ledcontrol) {
 
     // read password
     uint32_t password = 0;
@@ -1532,30 +1566,30 @@ static int em4x50_sim_handle_login_command(uint32_t *tag) {
 
     if (pwd && (password == reflect32(tag[EM4X50_DEVICE_PASSWORD]))) {
         em4x50_sim_send_ack();
-        gLogin = true;
-        LED_D_ON();
+        g_Login = true;
+        if (ledcontrol) LED_D_ON();
     } else {
         em4x50_sim_send_nak();
-        gLogin = false;
-        LED_D_OFF();
+        g_Login = false;
+        if (ledcontrol) LED_D_OFF();
 
         // save transmitted password (to be used in standalone mode)
-        gPassword = password;
+        g_Password = password;
     }
     // continue with standard read mode
     return EM4X50_COMMAND_STANDARD_READ;
 }
 
 // reset process (simulation mode)
-static int em4x50_sim_handle_reset_command(uint32_t *tag) {
+static int em4x50_sim_handle_reset_command(const uint32_t *tag, bool ledcontrol) {
 
     // processing pause time (corresponds to a "1" bit)
     em4x50_sim_send_bit(1);
 
     // send ACK
     em4x50_sim_send_ack();
-    gLogin = false;
-    LED_D_OFF();
+    g_Login = false;
+    if (ledcontrol) LED_D_OFF();
 
     // wait for initialization (tinit)
     wait_cycles(EM4X50_T_TAG_TINIT);
@@ -1565,7 +1599,7 @@ static int em4x50_sim_handle_reset_command(uint32_t *tag) {
 }
 
 // write process (simulation mode)
-static int em4x50_sim_handle_write_command(uint32_t *tag) {
+static int em4x50_sim_handle_write_command(uint32_t *tag, bool ledcontrol) {
 
     // read address
     uint8_t address = 0;
@@ -1598,7 +1632,7 @@ static int em4x50_sim_handle_write_command(uint32_t *tag) {
             break;
 
         case EM4X50_PROTECTION:
-            if (gLogin) {
+            if (g_Login) {
                 tag[address] = reflect32(data);
                 em4x50_sim_send_ack();
             } else {
@@ -1608,7 +1642,7 @@ static int em4x50_sim_handle_write_command(uint32_t *tag) {
             break;
 
         case EM4X50_CONTROL:
-            if (gLogin) {
+            if (g_Login) {
                 tag[address] = reflect32(data);
                 em4x50_sim_send_ack();
             } else {
@@ -1629,7 +1663,7 @@ static int em4x50_sim_handle_write_command(uint32_t *tag) {
 
         default:
             if ((address >= fwwp) && (address <= lwwp)) {
-                if (gLogin) {
+                if (g_Login) {
                     tag[address] = reflect32(data);
                     em4x50_sim_send_ack();
                 } else {
@@ -1653,12 +1687,12 @@ static int em4x50_sim_handle_write_command(uint32_t *tag) {
 
     // if "read after write" (raw) bit is set, send written data once
     if (raw) {
-        int command = em4x50_sim_send_listen_window(tag);
+        int command = em4x50_sim_send_listen_window(tag, ledcontrol);
         if (command != PM3_SUCCESS) {
             return command;
         }
 
-        command = em4x50_sim_send_listen_window(tag);
+        command = em4x50_sim_send_listen_window(tag, ledcontrol);
         if (command != PM3_SUCCESS) {
             return command;
         }
@@ -1671,11 +1705,11 @@ static int em4x50_sim_handle_write_command(uint32_t *tag) {
 }
 
 // write password process (simulation mode)
-static int em4x50_sim_handle_writepwd_command(uint32_t *tag) {
+static int em4x50_sim_handle_writepwd_command(uint32_t *tag, bool ledcontrol) {
 
     bool pwd = false;
 
-    gWritePasswordProcess = true;
+    g_WritePasswordProcess = true;
 
     // read password
     uint32_t act_password = 0;
@@ -1686,20 +1720,20 @@ static int em4x50_sim_handle_writepwd_command(uint32_t *tag) {
 
     if (pwd && (act_password == reflect32(tag[EM4X50_DEVICE_PASSWORD]))) {
         em4x50_sim_send_ack();
-        gLogin = true;
+        g_Login = true;
     } else {
         em4x50_sim_send_nak();
-        gLogin = false;
-        gWritePasswordProcess = false;
+        g_Login = false;
+        g_WritePasswordProcess = false;
 
         // save transmitted password (to be used in standalone mode)
-        gPassword = act_password;
+        g_Password = act_password;
 
         return EM4X50_COMMAND_STANDARD_READ;
     }
 
-    int command = em4x50_sim_send_listen_window(tag);
-    gWritePasswordProcess = false;
+    int command = em4x50_sim_send_listen_window(tag, ledcontrol);
+    g_WritePasswordProcess = false;
     if (command != EM4X50_COMMAND_WRITE_PASSWORD) {
         return command;
     }
@@ -1714,7 +1748,7 @@ static int em4x50_sim_handle_writepwd_command(uint32_t *tag) {
     if (pwd) {
         em4x50_sim_send_ack();
         tag[EM4X50_DEVICE_PASSWORD] = reflect32(new_password);
-        gPassword = new_password;
+        g_Password = new_password;
     } else {
         em4x50_sim_send_nak();
         return EM4X50_COMMAND_STANDARD_READ;
@@ -1732,33 +1766,33 @@ static int em4x50_sim_handle_writepwd_command(uint32_t *tag) {
     return EM4X50_COMMAND_STANDARD_READ;
 }
 
-void em4x50_handle_commands(int *command, uint32_t *tag) {
+void em4x50_handle_commands(int *command, uint32_t *tag, bool ledcontrol) {
 
     switch (*command) {
 
         case EM4X50_COMMAND_LOGIN:
-            *command = em4x50_sim_handle_login_command(tag);
+            *command = em4x50_sim_handle_login_command(tag, ledcontrol);
             break;
 
         case EM4X50_COMMAND_RESET:
-            *command = em4x50_sim_handle_reset_command(tag);
+            *command = em4x50_sim_handle_reset_command(tag, ledcontrol);
             break;
 
         case EM4X50_COMMAND_WRITE:
-            *command = em4x50_sim_handle_write_command(tag);
+            *command = em4x50_sim_handle_write_command(tag, ledcontrol);
             break;
 
         case EM4X50_COMMAND_WRITE_PASSWORD:
-            *command = em4x50_sim_handle_writepwd_command(tag);
+            *command = em4x50_sim_handle_writepwd_command(tag, ledcontrol);
             break;
 
         case EM4X50_COMMAND_SELECTIVE_READ:
-            *command = em4x50_sim_handle_selective_read_command(tag);
+            *command = em4x50_sim_handle_selective_read_command(tag, ledcontrol);
             break;
 
         case EM4X50_COMMAND_STANDARD_READ:
-            LED_C_OFF();
-            *command = em4x50_sim_handle_standard_read_command(tag);
+            if (ledcontrol) LED_C_OFF();
+            *command = em4x50_sim_handle_standard_read_command(tag, ledcontrol);
             break;
 
         // bit errors during reading may lead to unknown commands
@@ -1772,7 +1806,7 @@ void em4x50_handle_commands(int *command, uint32_t *tag) {
 // simulate uploaded data in emulator memory
 // LED C -> reader command has been detected
 // LED D -> operations that require authentication are possible
-void em4x50_sim(uint32_t *password) {
+void em4x50_sim(const uint32_t *password, bool ledcontrol) {
 
     int command = PM3_ENODATA;
 
@@ -1791,17 +1825,17 @@ void em4x50_sim(uint32_t *password) {
     if (tag[EM4X50_DEVICE_SERIAL] != tag[EM4X50_DEVICE_ID]) {
 
         // init
-        LEDsoff();
+        if (ledcontrol) LEDsoff();
         em4x50_setup_sim();
-        gLogin = false;
-        gWritePasswordProcess = false;
+        g_Login = false;
+        g_WritePasswordProcess = false;
 
-        // start with inital command = standard read mode
+        // start with initial command = standard read mode
         command = EM4X50_COMMAND_STANDARD_READ;
 
         for (;;) {
 
-            em4x50_handle_commands(&command, tag);
+            em4x50_handle_commands(&command, tag, ledcontrol);
 
             // stop if key (pm3 button or enter key) has been pressed
             if (command == PM3_EOPABORTED) {
@@ -1812,13 +1846,13 @@ void em4x50_sim(uint32_t *password) {
             // mode and reset former authentication
             if (command == PM3_ETIMEOUT) {
                 command = EM4X50_COMMAND_STANDARD_READ;
-                gLogin = false;
-                LED_D_OFF();
+                g_Login = false;
+                if (ledcontrol) LED_D_OFF();
             }
         }
     }
 
     BigBuf_free();
-    lf_finalize();
+    lf_finalize(ledcontrol);
     reply_ng(CMD_LF_EM4X50_SIM, command, NULL, 0);
 }

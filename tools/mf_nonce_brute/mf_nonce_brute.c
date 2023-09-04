@@ -127,7 +127,7 @@ static int param_gethex_to_eol(const char *line, int paramnum, uint8_t *data, in
         }
 
         if (*datalen >= maxdatalen) {
-            // if we dont have space in buffer and have symbols to translate
+            // if we don't have space in buffer and have symbols to translate
             return 2;
         }
 
@@ -153,17 +153,17 @@ static void hex_to_buffer(const uint8_t *buf, const uint8_t *hex_data, const siz
 
     if (buf == NULL) return;
 
-    char *tmp = (char *)buf;
+    char *tmp_base = (char *)buf;
+    char *tmp = tmp_base;
     size_t i;
-    memset(tmp, 0x00, hex_max_len);
 
     size_t max_len = (hex_len > hex_max_len) ? hex_max_len : hex_len;
 
     for (i = 0; i < max_len; ++i, tmp += 2 + spaces_between) {
-        sprintf(tmp, (uppercase) ? "%02X" : "%02x", (unsigned int) hex_data[i]);
+        snprintf(tmp, hex_max_len - (tmp - tmp_base), (uppercase) ? "%02X" : "%02x", (unsigned int) hex_data[i]);
 
         for (size_t j = 0; j < spaces_between; j++)
-            sprintf(tmp + 2 + j, " ");
+            snprintf(tmp + 2 + j, hex_max_len - (2 + j + (tmp - tmp_base)), " ");
     }
 
     i *= (2 + spaces_between);
@@ -173,11 +173,10 @@ static void hex_to_buffer(const uint8_t *buf, const uint8_t *hex_data, const siz
         mlen = hex_max_len;
 
     for (; i < mlen; i++, tmp += 1)
-        sprintf(tmp, " ");
+        snprintf(tmp, hex_max_len - (tmp - tmp_base), " ");
 
     // remove last space
     *tmp = '\0';
-    return;
 }
 
 static char *sprint_hex_inrow_ex(const uint8_t *data, const size_t len, const size_t min_str_len) {
@@ -332,6 +331,8 @@ static bool checkValidCmd(uint32_t decrypted) {
 static bool checkValidCmdByte(uint8_t *cmd, uint16_t n) {
 
     bool ok = false;
+    if (cmd == NULL)
+        return false;
     for (int i = 0; i < 8; ++i) {
         if (cmd[0] == cmds[i][0]) {
 
@@ -463,7 +464,7 @@ static void *brute_thread(void *arguments) {
 static void *brute_key_thread(void *arguments) {
 
     struct thread_key_args *args = (struct thread_key_args *) arguments;
-    uint64_t key = args->part_key;
+    uint64_t key;
     uint8_t local_enc[args->enc_len];
     memcpy(local_enc, args->enc, args->enc_len);
 
@@ -641,7 +642,7 @@ int main(int argc, char *argv[]) {
 
     // threads
     for (int i = 0; i < thread_count; ++i) {
-        struct thread_key_args *b = malloc(sizeof(struct thread_key_args));
+        struct thread_key_args *b = calloc(1, sizeof(struct thread_key_args));
         b->thread = i;
         b->idx = i;
         b->uid = uid;

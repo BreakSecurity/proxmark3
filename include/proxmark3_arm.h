@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Jonathan Westhues, Mar 2006
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Hardware and interface definitions
 //-----------------------------------------------------------------------------
@@ -28,8 +36,11 @@
 #define PWM_CHANNEL(x)                          (1 << (x))
 
 #define ADC_CHAN_LF                             4
+#if defined RDV4 || defined ICOPYX
+#define ADC_CHAN_HF                             7
+#else
 #define ADC_CHAN_HF                             5
-#define ADC_CHAN_HF_RDV40                       7
+#endif
 #define ADC_MODE_PRESCALE(x)                    ((x) << 8)
 #define ADC_MODE_STARTUP_TIME(x)                ((x) << 16)
 #define ADC_MODE_SAMPLE_HOLD_TIME(x)            ((x) << 24)
@@ -120,7 +131,7 @@
 #define COMMON_AREA_MAGIC 0x43334d50 // "PM3C"
 #define COMMON_AREA_COMMAND_NONE 0
 #define COMMON_AREA_COMMAND_ENTER_FLASH_MODE 1
-struct common_area {
+typedef struct {
     int magic; /* Magic sequence, to distinguish against random uninitialized memory */
     char version; /* Must be 1 */
     char command;
@@ -130,6 +141,6 @@ struct common_area {
         unsigned int button_pressed: 1;
     } PACKED flags;
     int arg1, arg2;
-} PACKED;
+} PACKED common_area_t;
 
 #endif

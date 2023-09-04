@@ -1,13 +1,19 @@
 //-----------------------------------------------------------------------------
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Hitag2 Crypto
-//
-// (c) 2009 Henryk Plötz <henryk@ploetzli.ch>
-// (c) 2012 Roel Verdult
-// (c) 2019 Iceman
 //-----------------------------------------------------------------------------
 #include "hitag2_crypto.h"
 
@@ -85,17 +91,17 @@ uint32_t _hitag2_byte(uint64_t *x) {
 
 void hitag2_cipher_reset(struct hitag2_tag *tag, const uint8_t *iv) {
     uint64_t key = ((uint64_t)tag->sectors[2][2]) |
-                   ((uint64_t)tag->sectors[2][3] << 8) |
+                   ((uint64_t)tag->sectors[2][3] <<  8) |
                    ((uint64_t)tag->sectors[1][0] << 16) |
                    ((uint64_t)tag->sectors[1][1] << 24) |
                    ((uint64_t)tag->sectors[1][2] << 32) |
                    ((uint64_t)tag->sectors[1][3] << 40);
     uint32_t uid = ((uint32_t)tag->sectors[0][0]) |
-                   ((uint32_t)tag->sectors[0][1] << 8) |
+                   ((uint32_t)tag->sectors[0][1] <<  8) |
                    ((uint32_t)tag->sectors[0][2] << 16) |
                    ((uint32_t)tag->sectors[0][3] << 24);
     uint32_t iv_ = (((uint32_t)(iv[0]))) |
-                   (((uint32_t)(iv[1])) << 8) |
+                   (((uint32_t)(iv[1])) <<  8) |
                    (((uint32_t)(iv[2])) << 16) |
                    (((uint32_t)(iv[3])) << 24);
     tag->cs = _hitag2_init(REV64(key), REV32(uid), REV32(iv_));

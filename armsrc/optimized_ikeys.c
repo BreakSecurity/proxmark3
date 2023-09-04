@@ -1,39 +1,36 @@
-/*****************************************************************************
- * WARNING
- *
- * THIS CODE IS CREATED FOR EXPERIMENTATION AND EDUCATIONAL USE ONLY.
- *
- * USAGE OF THIS CODE IN OTHER WAYS MAY INFRINGE UPON THE INTELLECTUAL
- * PROPERTY OF OTHER PARTIES, SUCH AS INSIDE SECURE AND HID GLOBAL,
- * AND MAY EXPOSE YOU TO AN INFRINGEMENT ACTION FROM THOSE PARTIES.
- *
- * THIS CODE SHOULD NEVER BE USED TO INFRINGE PATENTS OR INTELLECTUAL PROPERTY RIGHTS.
- *
- *****************************************************************************
- *
- * This file is part of loclass. It is a reconstructon of the cipher engine
- * used in iClass, and RFID techology.
- *
- * The implementation is based on the work performed by
- * Flavio D. Garcia, Gerhard de Koning Gans, Roel Verdult and
- * Milosch Meriac in the paper "Dismantling IClass".
- *
- * Copyright (C) 2014 Martin Holst Swende
- *
- * This is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation, or, at your option, any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with loclass.  If not, see <http://www.gnu.org/licenses/>.
- *
- *
- ****************************************************************************/
+//-----------------------------------------------------------------------------
+// Borrowed initially from https://github.com/holiman/loclass
+// Copyright (C) 2014 Martin Holst Swende
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
+// WARNING
+//
+// THIS CODE IS CREATED FOR EXPERIMENTATION AND EDUCATIONAL USE ONLY.
+//
+// USAGE OF THIS CODE IN OTHER WAYS MAY INFRINGE UPON THE INTELLECTUAL
+// PROPERTY OF OTHER PARTIES, SUCH AS INSIDE SECURE AND HID GLOBAL,
+// AND MAY EXPOSE YOU TO AN INFRINGEMENT ACTION FROM THOSE PARTIES.
+//
+// THIS CODE SHOULD NEVER BE USED TO INFRINGE PATENTS OR INTELLECTUAL PROPERTY RIGHTS.
+//-----------------------------------------------------------------------------
+// It is a reconstruction of the cipher engine used in iClass, and RFID techology.
+//
+// The implementation is based on the work performed by
+// Flavio D. Garcia, Gerhard de Koning Gans, Roel Verdult and
+// Milosch Meriac in the paper "Dismantling IClass".
+//-----------------------------------------------------------------------------
 
 /**
 From "Dismantling iclass":
@@ -64,7 +61,7 @@ From "Dismantling iclass":
 #include "mbedtls/des.h"
 #include "optimized_cipherutils.h"
 
-uint8_t pi[35] = {
+static uint8_t pi[35] = {
     0x0F, 0x17, 0x1B, 0x1D, 0x1E, 0x27, 0x2B, 0x2D,
     0x2E, 0x33, 0x35, 0x39, 0x36, 0x3A, 0x3C, 0x47,
     0x4B, 0x4D, 0x4E, 0x53, 0x55, 0x56, 0x59, 0x5A,
@@ -196,7 +193,7 @@ static uint64_t check(uint64_t z) {
     return ck1 | ck2 >> 24;
 }
 
-static void permute(BitstreamIn *p_in, uint64_t z, int l, int r, BitstreamOut *out) {
+static void permute(BitstreamIn_t *p_in, uint64_t z, int l, int r, BitstreamOut_t *out) {
     if (bitsLeft(p_in) == 0)
         return;
 
@@ -251,9 +248,9 @@ void hash0(uint64_t c, uint8_t k[8]) {
     if (x & 1) //Check if x7 is 1
         p = ~p;
 
-    BitstreamIn p_in = { &p, 8, 0 };
+    BitstreamIn_t p_in = { &p, 8, 0 };
     uint8_t outbuffer[] = {0, 0, 0, 0, 0, 0, 0, 0};
-    BitstreamOut out = {outbuffer, 0, 0};
+    BitstreamOut_t out = {outbuffer, 0, 0};
     permute(&p_in, zCaret, 0, 4, &out); //returns 48 bits? or 6 8-bytes
 
     //Out is now a buffer containing six-bit bytes, should be 48 bits

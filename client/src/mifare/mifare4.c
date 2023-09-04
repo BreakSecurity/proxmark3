@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2018 Merlok
-// Copyright (C) 2018 drHatson
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // iso14443-4 mifare commands
 //-----------------------------------------------------------------------------
@@ -17,9 +24,9 @@
 #include "ui.h"
 #include "crypto/libpcrypto.h"
 
-static bool VerboseMode = false;
+static bool g_verbose_mode = false;
 void mfpSetVerboseMode(bool verbose) {
-    VerboseMode = verbose;
+    g_verbose_mode = verbose;
 }
 
 static const PlusErrorsElm_t PlusErrors[] = {
@@ -45,35 +52,59 @@ const char *mfpGetErrorDescription(uint8_t errorCode) {
 }
 
 AccessConditions_t MFAccessConditions[] = {
-    {0x00, "read AB; write AB; increment AB; decrement transfer restore AB"},
-    {0x01, "read AB; decrement transfer restore AB"},
-    {0x02, "read AB"},
-    {0x03, "read B; write B"},
-    {0x04, "read AB; writeB"},
-    {0x05, "read B"},
-    {0x06, "read AB; write B; increment B; decrement transfer restore AB"},
-    {0x07, "none"}
+    {0x00, "read AB; write AB; increment AB; decrement transfer restore AB", "transport config"},
+    {0x01, "read AB; decrement transfer restore AB", "value block"},
+    {0x02, "read AB", "read/write block"},
+    {0x03, "read B; write B", "read/write block"},
+    {0x04, "read AB; write B", "read/write block"},
+    {0x05, "read B", "read/write block"},
+    {0x06, "read AB; write B; increment B; decrement transfer restore AB", "value block"},
+    {0x07, "none", "read/write block"}
 };
 
 AccessConditions_t MFAccessConditionsTrailer[] = {
-    {0x00, "read A by A; read ACCESS by A; read B by A; write B by A"},
-    {0x01, "write A by A; read ACCESS by A write ACCESS by A; read B by A; write B by A"},
-    {0x02, "read ACCESS by A; read B by A"},
-    {0x03, "write A by B; read ACCESS by AB; write ACCESS by B; write B by B"},
-    {0x04, "write A by B; read ACCESS by AB; write B by B"},
-    {0x05, "read ACCESS by AB; write ACCESS by B"},
-    {0x06, "read ACCESS by AB"},
-    {0x07, "read ACCESS by AB"}
+    {0x00, "read A by A; read ACCESS by A; read/write B by A", ""},
+    {0x01, "write A by A; read/write ACCESS by A; read/write B by A", ""},
+    {0x02, "read ACCESS by A; read B by A", ""},
+    {0x03, "write A by B; read ACCESS by AB; write ACCESS by B; write B by B", ""},
+    {0x04, "write A by B; read ACCESS by AB; write B by B", ""},
+    {0x05, "read ACCESS by AB; write ACCESS by B", ""},
+    {0x06, "read ACCESS by AB", ""},
+    {0x07, "read ACCESS by AB", ""}
 };
 
-const char *mfGetAccessConditionsDesc(uint8_t blockn, uint8_t *data) {
-    static char StaticNone[] = "none";
+bool mfValidateAccessConditions(const uint8_t *data) {
+    uint8_t nd1 = NIBBLE_LOW(data[0]);
+    uint8_t nd2 = NIBBLE_HIGH(data[0]);
+    uint8_t nd3 = NIBBLE_LOW(data[1]);
+    uint8_t d1  = NIBBLE_HIGH(data[1]);
+    uint8_t d2  = NIBBLE_LOW(data[2]);
+    uint8_t d3  = NIBBLE_HIGH(data[2]);
 
-    uint8_t data1 = ((data[1] >> 4) & 0x0f) >> blockn;
-    uint8_t data2 = ((data[2]) & 0x0f) >> blockn;
-    uint8_t data3 = ((data[2] >> 4) & 0x0f) >> blockn;
+    return ((nd1 == (d1 ^ 0xF)) && (nd2 == (d2 ^ 0xF)) && (nd3 == (d3 ^ 0xF)));
+}
 
-    uint8_t cond = (data1 & 0x01) << 2 | (data2 & 0x01) << 1 | (data3 & 0x01);
+bool mfReadOnlyAccessConditions(uint8_t blockn, const uint8_t *data) {
+
+    uint8_t d1  = NIBBLE_HIGH(data[1]) >> blockn;
+    uint8_t d2  = NIBBLE_LOW(data[2]) >> blockn;
+    uint8_t d3  = NIBBLE_HIGH(data[2]) >> blockn;
+    uint8_t cond = (d1 & 0x01) << 2 | (d2 & 0x01) << 1 | (d3 & 0x01);
+
+    if (blockn == 3) {
+        if ((cond == 0x02) || (cond == 0x06) || (cond == 0x07)) return true;
+    } else {
+        if ((cond == 0x02) || (cond == 0x05)) return true;
+    }
+    return false;
+}
+
+const char *mfGetAccessConditionsDesc(uint8_t blockn, const uint8_t *data) {
+    uint8_t d1 = NIBBLE_HIGH(data[1]) >> blockn;
+    uint8_t d2 = NIBBLE_LOW(data[2]) >> blockn;
+    uint8_t d3 = NIBBLE_HIGH(data[2]) >> blockn;
+
+    uint8_t cond = (d1 & 0x01) << 2 | (d2 & 0x01) << 1 | (d3 & 0x01);
 
     if (blockn == 3) {
         for (int i = 0; i < ARRAYLEN(MFAccessConditionsTrailer); i++)
@@ -87,8 +118,17 @@ const char *mfGetAccessConditionsDesc(uint8_t blockn, uint8_t *data) {
             }
     };
 
-    return StaticNone;
+    static char none[] = "none";
+    return none;
 }
+
+uint8_t mf_get_accesscondition(uint8_t blockn, const uint8_t *data) {
+    uint8_t d1 = NIBBLE_HIGH(data[1]) >> blockn;
+    uint8_t d2 = NIBBLE_LOW(data[2]) >> blockn;
+    uint8_t d3 = NIBBLE_HIGH(data[2]) >> blockn;
+    return (d1 & 0x01) << 2 | (d2 & 0x01) << 1 | (d3 & 0x01);
+}
+
 /*
 static int CalculateEncIVCommand(mf4Session_t *mf4session, uint8_t *iv, bool verbose) {
     memcpy(&iv[0], &mf4session->TI, 4);
@@ -158,7 +198,7 @@ int CalculateMAC(mf4Session_t *mf4session, MACType_t mtype, uint8_t blockNum, ui
     }
 
     if (verbose)
-        PrintAndLogEx(NORMAL, "MAC data[%d]: %s", macdatalen, sprint_hex(macdata, macdatalen));
+        PrintAndLogEx(INFO, "MAC data[%d]: %s", macdatalen, sprint_hex(macdata, macdatalen));
 
     return aes_cmac8(NULL, mf4session->Kmac, macdata, mac, macdatalen);
 }
@@ -181,7 +221,7 @@ int MifareAuth4(mf4Session_t *mf4session, uint8_t *keyn, uint8_t *key, bool acti
     if (res) {
         if (!silentMode) PrintAndLogEx(ERR, "Exchange raw error: %d", res);
         if (dropFieldIfError) DropField();
-        return 2;
+        return PM3_ERFTRANS;
     }
 
     if (verbose)
@@ -190,19 +230,19 @@ int MifareAuth4(mf4Session_t *mf4session, uint8_t *keyn, uint8_t *key, bool acti
     if (datalen < 1) {
         if (!silentMode) PrintAndLogEx(ERR, "Card response wrong length: %d", datalen);
         if (dropFieldIfError) DropField();
-        return 3;
+        return PM3_EWRONGANSWER;
     }
 
     if (data[0] != 0x90) {
         if (!silentMode) PrintAndLogEx(ERR, "Card response error: %02x %s", data[0], mfpGetErrorDescription(data[0]));
         if (dropFieldIfError) DropField();
-        return 3;
+        return PM3_EWRONGANSWER;
     }
 
     if (datalen != 19) { // code 1b + 16b + crc 2b
         if (!silentMode) PrintAndLogEx(ERR, "Card response must be 19 bytes long instead of: %d", datalen);
         if (dropFieldIfError) DropField();
-        return 3;
+        return PM3_EWRONGANSWER;
     }
 
     aes_decode(NULL, key, &data[1], RndB, 16);
@@ -225,7 +265,7 @@ int MifareAuth4(mf4Session_t *mf4session, uint8_t *keyn, uint8_t *key, bool acti
     if (res) {
         if (!silentMode) PrintAndLogEx(ERR, "Exchange raw error: %d", res);
         if (dropFieldIfError) DropField();
-        return 4;
+        return PM3_ERFTRANS;
     }
 
     if (verbose)
@@ -245,7 +285,7 @@ int MifareAuth4(mf4Session_t *mf4session, uint8_t *keyn, uint8_t *key, bool acti
             PrintAndLogEx(ERR, "RndA   card: %s", sprint_hex(&raw[4], 16));
         }
         if (dropFieldIfError) DropField();
-        return 5;
+        return PM3_EWRONGANSWER;
     }
 
     if (verbose) {
@@ -257,8 +297,9 @@ int MifareAuth4(mf4Session_t *mf4session, uint8_t *keyn, uint8_t *key, bool acti
     uint8_t kenc[16] = {0};
     memcpy(&kenc[0], &RndA[11], 5);
     memcpy(&kenc[5], &RndB[11], 5);
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 5; i++) {
         kenc[10 + i] = RndA[4 + i] ^ RndB[4 + i];
+    }
     kenc[15] = 0x11;
 
     aes_encode(NULL, key, kenc, kenc, 16);
@@ -269,8 +310,9 @@ int MifareAuth4(mf4Session_t *mf4session, uint8_t *keyn, uint8_t *key, bool acti
     uint8_t kmac[16] = {0};
     memcpy(&kmac[0], &RndA[7], 5);
     memcpy(&kmac[5], &RndB[7], 5);
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 5; i++) {
         kmac[10 + i] = RndA[0 + i] ^ RndB[0 + i];
+    }
     kmac[15] = 0x22;
 
     aes_encode(NULL, key, kmac, kmac, 16);
@@ -302,16 +344,16 @@ int MifareAuth4(mf4Session_t *mf4session, uint8_t *keyn, uint8_t *key, bool acti
     if (verbose)
         PrintAndLogEx(INFO, "Authentication OK");
 
-    return 0;
+    return PM3_SUCCESS;
 }
 
 static int intExchangeRAW14aPlus(uint8_t *datain, int datainlen, bool activateField, bool leaveSignalON, uint8_t *dataout, int maxdataoutlen, int *dataoutlen) {
-    if (VerboseMode)
+    if (g_verbose_mode)
         PrintAndLogEx(INFO, ">>> %s", sprint_hex(datain, datainlen));
 
     int res = ExchangeRAW14a(datain, datainlen, activateField, leaveSignalON, dataout, maxdataoutlen, dataoutlen, false);
 
-    if (VerboseMode)
+    if (g_verbose_mode)
         PrintAndLogEx(INFO, "<<< %s", sprint_hex(dataout, *dataoutlen));
 
     return res;
@@ -333,7 +375,7 @@ int MFPCommitPerso(bool activateField, bool leaveSignalON, uint8_t *dataout, int
 int MFPReadBlock(mf4Session_t *mf4session, bool plain, uint8_t blockNum, uint8_t blockCount, bool activateField, bool leaveSignalON, uint8_t *dataout, int maxdataoutlen, int *dataoutlen, uint8_t *mac) {
     uint8_t rcmd[4 + 8] = {(plain ? (0x37) : (0x33)), blockNum, 0x00, blockCount};
     if (!plain && mf4session)
-        CalculateMAC(mf4session, mtypReadCmd, blockNum, blockCount, rcmd, 4, &rcmd[4], VerboseMode);
+        CalculateMAC(mf4session, mtypReadCmd, blockNum, blockCount, rcmd, 4, &rcmd[4], g_verbose_mode);
 
     int res = intExchangeRAW14aPlus(rcmd, plain ? 4 : sizeof(rcmd), activateField, leaveSignalON, dataout, maxdataoutlen, dataoutlen);
     if (res)
@@ -343,7 +385,7 @@ int MFPReadBlock(mf4Session_t *mf4session, bool plain, uint8_t blockNum, uint8_t
         mf4session->R_Ctr++;
 
     if (mf4session && mac && *dataoutlen > 11)
-        CalculateMAC(mf4session, mtypReadResp, blockNum, blockCount, dataout, *dataoutlen - 8 - 2, mac, VerboseMode);
+        CalculateMAC(mf4session, mtypReadResp, blockNum, blockCount, dataout, *dataoutlen - 8 - 2, mac, g_verbose_mode);
 
     return 0;
 }
@@ -352,7 +394,7 @@ int MFPWriteBlock(mf4Session_t *mf4session, uint8_t blockNum, uint8_t *data, boo
     uint8_t rcmd[1 + 2 + 16 + 8] = {0xA3, blockNum, 0x00};
     memmove(&rcmd[3], data, 16);
     if (mf4session)
-        CalculateMAC(mf4session, mtypWriteCmd, blockNum, 1, rcmd, 19, &rcmd[19], VerboseMode);
+        CalculateMAC(mf4session, mtypWriteCmd, blockNum, 1, rcmd, 19, &rcmd[19], g_verbose_mode);
 
     int res = intExchangeRAW14aPlus(rcmd, sizeof(rcmd), activateField, leaveSignalON, dataout, maxdataoutlen, dataoutlen);
     if (res)
@@ -362,7 +404,7 @@ int MFPWriteBlock(mf4Session_t *mf4session, uint8_t blockNum, uint8_t *data, boo
         mf4session->W_Ctr++;
 
     if (mf4session && mac && *dataoutlen > 3)
-        CalculateMAC(mf4session, mtypWriteResp, blockNum, 1, dataout, *dataoutlen, mac, VerboseMode);
+        CalculateMAC(mf4session, mtypWriteResp, blockNum, 1, dataout, *dataoutlen, mac, g_verbose_mode);
 
     return 0;
 }
@@ -375,12 +417,12 @@ int mfpReadSector(uint8_t sectorNo, uint8_t keyType, uint8_t *key, uint8_t *data
     keyn[0] = uKeyNum >> 8;
     keyn[1] = uKeyNum & 0xff;
     if (verbose)
-        PrintAndLogEx(INFO, "--sector[%d]:%02x key:%04x", mfNumBlocksPerSector(sectorNo), sectorNo, uKeyNum);
+        PrintAndLogEx(INFO, "--sector[%u]:%02x key:%04x", mfNumBlocksPerSector(sectorNo), sectorNo, uKeyNum);
 
     mf4Session_t _session;
     int res = MifareAuth4(&_session, keyn, key, true, true, true, verbose, false);
     if (res) {
-        PrintAndLogEx(ERR, "Sector %d authentication error: %d", sectorNo, res);
+        PrintAndLogEx(ERR, "Sector %u authentication error: %d", sectorNo, res);
         return res;
     }
 
@@ -391,18 +433,18 @@ int mfpReadSector(uint8_t sectorNo, uint8_t keyType, uint8_t *key, uint8_t *data
     for (int n = firstBlockNo; n < firstBlockNo + mfNumBlocksPerSector(sectorNo); n++) {
         res = MFPReadBlock(&_session, plain, n & 0xff, 1, false, true, data, sizeof(data), &datalen, mac);
         if (res) {
-            PrintAndLogEx(ERR, "Sector %d read error: %d", sectorNo, res);
+            PrintAndLogEx(ERR, "Sector %u read error: %d", sectorNo, res);
             DropField();
             return res;
         }
 
         if (datalen && data[0] != 0x90) {
-            PrintAndLogEx(ERR, "Sector %d card read error: %02x %s", sectorNo, data[0], mfpGetErrorDescription(data[0]));
+            PrintAndLogEx(ERR, "Sector %u card read error: %02x %s", sectorNo, data[0], mfpGetErrorDescription(data[0]));
             DropField();
             return 5;
         }
         if (datalen != 1 + 16 + 8 + 2) {
-            PrintAndLogEx(ERR, "Sector %d error returned data length:%d", sectorNo, datalen);
+            PrintAndLogEx(ERR, "Sector %u error returned data length:%d", sectorNo, datalen);
             DropField();
             return 6;
         }
@@ -472,35 +514,56 @@ int MFPGetVersion(bool activateField, bool leaveSignalON, uint8_t *dataout, int 
 // Mifare Memory Structure: up to 32 Sectors with 4 blocks each (1k and 2k cards),
 // plus evtl. 8 sectors with 16 blocks each (4k cards)
 uint8_t mfNumBlocksPerSector(uint8_t sectorNo) {
-    if (sectorNo < 32)
+    if (sectorNo < 32) {
         return 4;
-    else
-        return 16;
-}
-
-uint8_t mfFirstBlockOfSector(uint8_t sectorNo) {
-    if (sectorNo < 32)
-        return sectorNo * 4;
-    else
-        return 32 * 4 + (sectorNo - 32) * 16;
-}
-
-uint8_t mfSectorTrailer(uint8_t blockNo) {
-    if (blockNo < 32 * 4) {
-        return (blockNo | 0x03);
     } else {
-        return (blockNo | 0x0f);
+        return 16;
     }
 }
 
-bool mfIsSectorTrailer(uint8_t blockNo) {
+uint8_t mfFirstBlockOfSector(uint8_t sectorNo) {
+    if (sectorNo < 32) {
+        return sectorNo * 4;
+    } else {
+        return 32 * 4 + (sectorNo - 32) * 16;
+    }
+}
+
+uint8_t mfSectorTrailerOfSector(uint8_t sectorNo) {
+    if (sectorNo < 32) {
+        return (sectorNo * 4) | 0x03;
+    } else {
+        return (32 * 4 + (sectorNo - 32) * 16) | 0x0f;
+    }
+}
+
+// assumes blockno is 0-255..
+uint8_t mfSectorTrailer(uint16_t blockNo) {
+    if (blockNo < 32 * 4) {
+        return (blockNo | 0x03);
+    } else {
+        return (blockNo | 0x0F);
+    }
+}
+
+// assumes blockno is 0-255..
+bool mfIsSectorTrailer(uint16_t blockNo) {
     return (blockNo == mfSectorTrailer(blockNo));
 }
 
-uint8_t mfSectorNum(uint8_t blockNo) {
+// assumes blockno is 0-255..
+uint8_t mfSectorNum(uint16_t blockNo) {
     if (blockNo < 32 * 4)
-        return blockNo / 4;
+        return (blockNo / 4);
     else
-        return 32 + (blockNo - 32 * 4) / 16;
+        return (32 + (blockNo - 32 * 4) / 16);
 
+}
+
+bool mfIsSectorTrailerBasedOnBlocks(uint8_t sectorno, uint16_t blockno) {
+    if (sectorno < 32) {
+        return ((blockno | 0x03) == blockno);
+    } else {
+        return ((blockno | 0x0F) == blockno);
+    }
 }

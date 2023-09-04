@@ -1,7 +1,17 @@
 #-----------------------------------------------------------------------------
-# This code is licensed to you under the terms of the GNU GPL, version 2 or,
-# at your option, any later version. See the LICENSE.txt file for the text of
-# the license.
+# Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# See LICENSE.txt for the text of the license.
 #-----------------------------------------------------------------------------
 # Common makefile functions for all platforms
 #-----------------------------------------------------------------------------
@@ -25,10 +35,9 @@ ifeq ($(DEFSBEENHERE),)
     $(error Can't find Makefile.defs)
 endif
 
-CC = $(CROSS)gcc
-AS = $(CROSS)as
-LD = $(CROSS)ld
-OBJCOPY = $(CROSS)objcopy
+CROSS_CC = $(CROSS)gcc
+CROSS_LD = $(CROSS)gcc
+CROSS_OBJCOPY = $(CROSS)objcopy
 
 OBJDIR = obj
 
@@ -107,21 +116,21 @@ VERSIONOBJ = $(patsubst %.c,$(OBJDIR)/%.o,$(notdir $(VERSIONSRC)))
 
 $(THUMBOBJ): $(OBJDIR)/%.o: %.c $(INCLUDES)
 	$(info [-] CC $<)
-	$(Q)$(CC) $(CROSS_CFLAGS) $(DEPFLAGS) -mthumb -o $@ $<
+	$(Q)$(CROSS_CC) $(CROSS_CFLAGS) $(DEPFLAGS) -mthumb -o $@ $<
 	$(Q)$(POSTCOMPILE)
 
 $(ARMOBJ): $(OBJDIR)/%.o: %.c $(INCLUDES)
 	$(info [-] CC $<)
-	$(Q)$(CC) $(CROSS_CFLAGS) $(DEPFLAGS) -o $@ $<
+	$(Q)$(CROSS_CC) $(CROSS_CFLAGS) $(DEPFLAGS) -o $@ $<
 	$(Q)$(POSTCOMPILE)
 
 $(ASMOBJ): $(OBJDIR)/%.o: %.s
 	$(info [-] CC $<)
-	$(Q)$(CC) $(CROSS_CFLAGS) -o $@ $<
+	$(Q)$(CROSS_CC) $(CROSS_CFLAGS) -o $@ $<
 
 $(VERSIONOBJ): $(OBJDIR)/%.o: %.c $(INCLUDES)
 	$(info [-] CC $<)
-	$(Q)$(CC) $(CROSS_CFLAGS) -mthumb -o $@ $<
+	$(Q)$(CROSS_CC) $(CROSS_CFLAGS) -mthumb -o $@ $<
 
 # This objcopy call translates physical flash addresses to logical addresses
 # without touching start address or RAM addresses (.bss and .data sections)
@@ -132,7 +141,7 @@ OBJCOPY_TRANSLATIONS = --no-change-warnings \
     --change-section-address .commonarea+0
 $(OBJDIR)/%.s19: $(OBJDIR)/%.elf
 	$(info [=] GEN $@)
-	$(Q)$(OBJCOPY) -Osrec --srec-forceS3 --strip-debug $(OBJCOPY_TRANSLATIONS) $^ $@
+	$(Q)$(CROSS_OBJCOPY) -Osrec --srec-forceS3 --strip-debug $(OBJCOPY_TRANSLATIONS) $^ $@
 
 # easy printing of MAKE VARIABLES
 print-%: ; @echo $* = $($*)

@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2016 iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Analyse bytes commands
 //-----------------------------------------------------------------------------
@@ -60,15 +68,20 @@ static int usart_txrx(uint8_t *srcdata, size_t srclen, uint8_t *dstdata, size_t 
         struct payload_header header;
         uint8_t data[PM3_CMD_DATA_SIZE - sizeof(uint32_t)];
     } PACKED payload;
+
     payload.header.waittime = waittime;
-    if (srclen >= sizeof(payload.data))
+
+    if (srclen >= sizeof(payload.data)) {
         return PM3_EOVFLOW;
+    }
+
     memcpy(payload.data, srcdata, srclen);
     SendCommandNG(CMD_USART_TXRX, (uint8_t *)&payload, srclen + sizeof(payload.header));
     PacketResponseNG resp;
-    if (!WaitForResponseTimeout(CMD_USART_TXRX, &resp, waittime + 500)) {
+    if (WaitForResponseTimeout(CMD_USART_TXRX, &resp, waittime + 500) == false) {
         return PM3_ETIMEOUT;
     }
+
     if (resp.status == PM3_SUCCESS) {
         *dstlen = resp.length;
         memcpy(dstdata, resp.data.asBytes, resp.length);
@@ -146,10 +159,11 @@ static int usart_bt_testcomm(uint32_t baudrate, uint8_t parity) {
 
     PrintAndLogEx(SUCCESS, "TX (%3zu):%.*s at %u 8%c1", strlen(string), (int)strlen(string), string, baudrate, parity);
 
-    ret = usart_txrx((uint8_t *)string, strlen(string), data, &len, 1000); // such large timeout needed
+    // 1000, such large timeout needed
+    ret = usart_txrx((uint8_t *)string, strlen(string), data, &len, 1000);
     if (ret == PM3_SUCCESS) {
         PrintAndLogEx(SUCCESS, "RX (%3zu):%.*s", len, (int)len, data);
-        if (strcmp((char *)data, "hc01.comV2.0") == 0) {
+        if (str_startswith((char *)data, "hc01.comV2.0") || str_startswith((char *)data, "BT SPP V3.0")) {
             PrintAndLogEx(SUCCESS, "Add-on " _GREEN_("found!"));
             return PM3_SUCCESS;
         }
@@ -378,7 +392,7 @@ static int CmdUsartBtPin(const char *Cmd) {
     }
 
     char string[6 + sizeof(pin)] = {0};
-    sprintf(string, "AT+PIN%s", pin);
+    snprintf(string, sizeof(string), "AT+PIN%s", pin);
     uint8_t data[PM3_CMD_DATA_SIZE] = {0x00};
     size_t len = 0;
     int ret = usart_txrx((uint8_t *)string, strlen(string), data, &len, 600);

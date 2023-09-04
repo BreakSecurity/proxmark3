@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency T55xx commands
 //-----------------------------------------------------------------------------
@@ -12,15 +21,15 @@
 
 #include "common.h"
 
-#define T55x7_CONFIGURATION_BLOCK 0x00
-#define T55x7_PWD_BLOCK 0x07
-#define T55x7_TRACE_BLOCK1 0x01
-#define T55x7_TRACE_BLOCK2 0x02
-#define T55x7_PAGE0 0x00
-#define T55x7_PAGE1 0x01
-#define T55x7_PWD 0x00000010
-#define REGULAR_READ_MODE_BLOCK 0xFF
-#define T55x7_BLOCK_COUNT 12
+#define T55x7_CONFIGURATION_BLOCK       0x00
+#define T55x7_PWD_BLOCK                 0x07
+#define T55x7_TRACE_BLOCK1              0x01
+#define T55x7_TRACE_BLOCK2              0x02
+#define T55x7_PAGE0                     0x00
+#define T55x7_PAGE1                     0x01
+#define T55x7_PWD                       0x00000010
+#define REGULAR_READ_MODE_BLOCK         0xFF
+#define T55x7_BLOCK_COUNT               12
 
 // config blocks
 #define T55X7_DEFAULT_CONFIG_BLOCK      0x000880E8  // ASK, compat mode, data rate 32, manchester, STT, 7 data blocks
@@ -61,6 +70,7 @@
 
 #define T55X7_PAC_CONFIG_BLOCK          0x00080080  // NRZ, data rate 32, 4 data blocks
 #define T55X7_VERICHIP_CONFIG_BLOCK     0x000C0080  // NRZ, data rate 40, 4 data blocks
+
 #define T55X7_bin 0b0010
 
 // Q5 / Termic / T5555
@@ -158,7 +168,7 @@ typedef struct {
 typedef struct {
     uint32_t blockdata;
     bool valid;
-}  t55xx_memory_item_t ;
+}  t55xx_memory_item_t;
 
 t55xx_conf_block_t Get_t55xx_Config(void);
 void Set_t55xx_Config(t55xx_conf_block_t conf);
@@ -181,8 +191,8 @@ void printT5xxHeader(uint8_t page);
 void printT55xxBlock(uint8_t blockNum, bool page1);
 int  printConfiguration(t55xx_conf_block_t b);
 
-bool t55xxAquireAndCompareBlock0(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose);
-bool t55xxAquireAndDetect(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose);
+bool t55xxAcquireAndCompareBlock0(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose);
+bool t55xxAcquireAndDetect(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose);
 bool t55xxVerifyWrite(uint8_t block, bool page1, bool usepwd, uint8_t override, uint32_t password, uint8_t downlink_mode, uint32_t data);
 int T55xxReadBlock(uint8_t block, bool page1, bool usepwd, uint8_t override, uint32_t password, uint8_t downlink_mode);
 int T55xxReadBlockEx(uint8_t block, bool page1, bool usepwd, uint8_t override, uint32_t password, uint8_t downlink_mode, bool verbose);

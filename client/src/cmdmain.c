@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// Modified 2018 iceman <iceman at iuse.se>
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Main command parser entry point
 //-----------------------------------------------------------------------------
@@ -32,6 +39,7 @@
 #include "cmdanalyse.h"
 #include "emv/cmdemv.h"   // EMV
 #include "cmdflashmem.h"  // rdv40 flashmem commands
+#include "cmdpiv.h"
 #include "cmdsmartcard.h" // rdv40 smart card ISO7816 commands
 #include "cmdusart.h"     // rdv40 FPC USART commands
 #include "cmdwiegand.h"   // wiegand commands
@@ -104,7 +112,7 @@ static int lf_search_plus(const char *Cmd) {
         // Try to change config!
         uint32_t d;
         d = config.divisor = default_divisor[i];
-        PrintAndLogEx(INFO, "-->  trying  (" _GREEN_("%d.%02d kHz")")", 12000 / (d + 1), ((1200000 + (d + 1) / 2) / (d + 1)) - ((12000 / (d + 1)) * 100));
+        PrintAndLogEx(INFO, "-->  trying  ( " _GREEN_("%d.%02d kHz")" )", 12000 / (d + 1), ((1200000 + (d + 1) / 2) / (d + 1)) - ((12000 / (d + 1)) * 100));
 
         retval = lf_config(&config);
         if (retval != PM3_SUCCESS)
@@ -229,12 +237,12 @@ static int CmdHints(const char *Cmd) {
     }
 
     if (turn_off) {
-        session.show_hints = false;
+        g_session.show_hints = false;
     } else if (turn_on) {
-        session.show_hints = true;
+        g_session.show_hints = true;
     }
 
-    PrintAndLogEx(INFO, "Hints are %s", (session.show_hints) ? "ON" : "OFF");
+    PrintAndLogEx(INFO, "Hints are %s", (g_session.show_hints) ? "ON" : "OFF");
     return PM3_SUCCESS;
 }
 
@@ -242,7 +250,7 @@ static int CmdMsleep(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "msleep",
                   "Sleep for given amount of milliseconds",
-                  "msleep 100"
+                  "msleep -t 100"
                  );
 
     void *argtable[] = {
@@ -275,7 +283,7 @@ static int CmdQuit(const char *Cmd) {
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
     CLIParserFree(ctx);
-    return PM3_EFATAL;
+    return PM3_SQUIT;
 }
 
 static int CmdRev(const char *Cmd) {
@@ -292,15 +300,23 @@ static int CmdClear(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "clear",
                   "Clear the Proxmark3 client terminal screen",
-                  "clear"
+                  "clear      -> clear the terminal screen\n"
+                  "clear -b   -> clear the terminal screen and the scrollback buffer"
                  );
     void *argtable[] = {
         arg_param_begin,
+        arg_lit0("b", "back", "also clear the scrollback buffer"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
+    bool scrollback = arg_get_lit(ctx, 1);
     CLIParserFree(ctx);
-    PrintAndLogEx(NORMAL, _CLEAR_ _TOP_ "");
+
+    if (!scrollback)
+        PrintAndLogEx(NORMAL, _CLEAR_ _TOP_ "");
+    else
+        PrintAndLogEx(NORMAL, _CLEAR_ _TOP_ _CLEAR_SCROLLBACK_ "");
+
     return PM3_SUCCESS;
 }
 
@@ -317,6 +333,7 @@ static command_t CommandTable[] = {
     {"lf",           CmdLF,        AlwaysAvailable,         "{ Low frequency commands... }"},
     {"mem",          CmdFlashMem,  IfPm3Flash,              "{ Flash memory manipulation... }"},
     {"nfc",          CmdNFC,       AlwaysAvailable,         "{ NFC commands... }"},
+    {"piv",          CmdPIV,       AlwaysAvailable,         "{ PIV commands... }"},
     {"reveng",       CmdRev,       AlwaysAvailable,         "{ CRC calculations from RevEng software... }"},
     {"smart",        CmdSmartcard, AlwaysAvailable,         "{ Smart card ISO-7816 commands... }"},
     {"script",       CmdScript,    AlwaysAvailable,         "{ Scripting commands... }"},
@@ -344,7 +361,7 @@ static int CmdHelp(const char *Cmd) {
 // Entry point into our code: called whenever the user types a command and
 // then presses Enter, which the full command line that they typed.
 //-----------------------------------------------------------------------------
-int CommandReceived(char *Cmd) {
+int CommandReceived(const char *Cmd) {
     return CmdsParse(CommandTable, Cmd);
 }
 

@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2019 iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Thinfilm commands
 //-----------------------------------------------------------------------------
@@ -35,15 +43,15 @@ static int print_barcode(uint8_t *barcode, const size_t barcode_len, bool verbos
     if (verbose) {
         PrintAndLogEx(SUCCESS, "     Data format : "_YELLOW_("%02X"), barcode[1]);
         if (barcode_len > 2) {
-            uint8_t b1, b2;
+            uint8_t b1 = 0, b2 = 0;
             compute_crc(CRC_14443_A, barcode, barcode_len - 2, &b1, &b2);
             bool isok = (barcode[barcode_len - 1] == b1 && barcode[barcode_len - 2] == b2);
 
-            PrintAndLogEx(SUCCESS, "        Checksum : "_YELLOW_("%02X %02X")" - %s", b2, b1, (isok) ? _GREEN_("OK") : _RED_("fail"));
+            PrintAndLogEx(SUCCESS, "        Checksum : "_YELLOW_("%02X %02X")" ( %s )", b2, b1, (isok) ? _GREEN_("ok") : _RED_("fail"));
         } else {
             PrintAndLogEx(SUCCESS, "        Checksum : "_YELLOW_("too few data for checksum")" - " _RED_("fail"));
         }
-        PrintAndLogEx(SUCCESS, " Data len (bits) : "_YELLOW_("%zu")" - %s", barcode_len * 8, (barcode_len == 16 || barcode_len == 32) ? _GREEN_("OK") : _YELLOW_("warning"));
+        PrintAndLogEx(SUCCESS, " Data len (bits) : "_YELLOW_("%zu")" ( %s )", barcode_len * 8, (barcode_len == 16 || barcode_len == 32) ? _GREEN_("ok") : _YELLOW_("warning"));
         PrintAndLogEx(SUCCESS, "        Raw data : "_YELLOW_("%s"), sprint_hex(barcode, barcode_len));
         if (barcode_len < 4) // too few to go to next decoding stages
             return PM3_ESOFT;
@@ -84,7 +92,7 @@ static int print_barcode(uint8_t *barcode, const size_t barcode_len, bool verbos
 
     snprintf(s + strlen(s), barcode_len - 3, (const char *)&barcode[2], barcode_len - 4);
 
-    for (uint8_t i = 0; i < strlen(s); i++) {
+    for (size_t i = 0; i < strlen(s); i++) {
 
         // terminate string
         if ((uint8_t) s[i] == 0xFE) {
@@ -165,7 +173,7 @@ int CmdHfThinFilmSim(const char *Cmd) {
     CLIParserFree(ctx);
 
     if (addcrc && data_len <= 510) {
-        uint8_t b1, b2;
+        uint8_t b1 = 0, b2 = 0;
         compute_crc(CRC_14443_A, data, data_len, &b1, &b2);
         data[data_len++] = b2;
         data[data_len++] = b1;

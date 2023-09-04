@@ -1,4 +1,18 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
 // Waveshare commands
 //-----------------------------------------------------------------------------
 // from ST25R3911B-NFC-Demo source code by Waveshare team
@@ -38,7 +52,7 @@ typedef struct {
     uint32_t colorreq;
     uint32_t Color_1;  //Color palette
     uint32_t Color_2;
-} PACKED BMP_HEADER;
+} PACKED bmp_header_t;
 
 #define EPD_1IN54B     0
 #define EPD_1IN54C     1
@@ -92,11 +106,11 @@ static model_t models[] = {
 static int CmdHelp(const char *Cmd);
 
 static int picture_bit_depth(const uint8_t *bmp, const size_t bmpsize, const uint8_t model_nr) {
-    if (bmpsize < sizeof(BMP_HEADER)) {
+    if (bmpsize < sizeof(bmp_header_t)) {
         return PM3_ESOFT;
     }
 
-    BMP_HEADER *pbmpheader = (BMP_HEADER *)bmp;
+    bmp_header_t *pbmpheader = (bmp_header_t *)bmp;
     PrintAndLogEx(DEBUG, "colorsused = %d", pbmpheader->colorsused);
     PrintAndLogEx(DEBUG, "pbmpheader->bpp = %d", pbmpheader->bpp);
     if ((pbmpheader->BMP_Width != models[model_nr].width) || (pbmpheader->BMP_Height != models[model_nr].height)) {
@@ -106,7 +120,7 @@ static int picture_bit_depth(const uint8_t *bmp, const size_t bmpsize, const uin
 }
 
 static int read_bmp_bitmap(const uint8_t *bmp, const size_t bmpsize, uint8_t model_nr, uint8_t **black, uint8_t **red) {
-    BMP_HEADER *pbmpheader = (BMP_HEADER *)bmp;
+    bmp_header_t *pbmpheader = (bmp_header_t *)bmp;
     // check file is bitmap
     if (pbmpheader->bpp != 1) {
         return PM3_ESOFT;
@@ -159,7 +173,8 @@ static int read_bmp_bitmap(const uint8_t *bmp, const size_t bmpsize, uint8_t mod
     return PM3_SUCCESS;
 }
 
-static void rgb_to_gray(int16_t *chanR, int16_t *chanG, int16_t *chanB, uint16_t width, uint16_t height, int16_t *chanGrey) {
+static void rgb_to_gray(const int16_t *chanR, const int16_t *chanG, const int16_t *chanB,
+                        uint16_t width, uint16_t height, int16_t *chanGrey) {
     for (uint16_t Y = 0; Y < height; Y++) {
         for (uint16_t X = 0; X < width; X++) {
             // greyscale conversion
@@ -179,7 +194,7 @@ static void dither_chan_inplace(int16_t *chan, uint16_t width, uint16_t height) 
             int16_t newp = oldp > 127 ? 255 : 0;
             chan[X + Y * width] = newp;
             int16_t err = oldp - newp;
-            float m[] = {7, 3, 5, 1};
+            const float m[] = {7, 3, 5, 1};
             if (X < width - 1) {
                 chan[X + 1 +  Y      * width] = chan[X + 1 +  Y      * width] + m[0] / 16 * err;
             }
@@ -204,7 +219,8 @@ static uint32_t color_compare(int16_t r1, int16_t g1, int16_t b1, int16_t r2, in
     return dist;
 }
 
-static void nearest_color(int16_t oldR, int16_t oldG, int16_t oldB, uint8_t *palette, uint16_t palettelen, uint8_t *newR, uint8_t *newG, uint8_t *newB) {
+static void nearest_color(int16_t oldR, int16_t oldG, int16_t oldB, const uint8_t *palette,
+                          uint16_t palettelen, uint8_t *newR, uint8_t *newG, uint8_t *newB) {
     uint32_t bestdist = 0x7FFFFFFF;
     for (uint16_t i = 0; i < palettelen; i++) {
         uint8_t R = palette[i * 3 + 0];
@@ -239,7 +255,7 @@ static void dither_rgb_inplace(int16_t *chanR, int16_t *chanG, int16_t *chanB, u
             int16_t errR = oldR - newR;
             int16_t errG = oldG - newG;
             int16_t errB = oldB - newB;
-            float m[] = {7, 3, 5, 1};
+            const float m[] = {7, 3, 5, 1};
             if (Y % 2) {
                 if (XX > 0) {
                     chanR[XX - 1 +  Y      * width] = (chanR[XX - 1 +  Y      * width] + m[0] / 16 * errR);
@@ -296,7 +312,7 @@ static void rgb_to_gray_red_inplace(int16_t *chanR, int16_t *chanG, int16_t *cha
     }
 }
 
-static void threshold_chan(int16_t *colorchan, uint16_t width, uint16_t height, uint8_t threshold, uint8_t *colormap) {
+static void threshold_chan(const int16_t *colorchan, uint16_t width, uint16_t height, uint8_t threshold, uint8_t *colormap) {
     for (uint16_t Y = 0; Y < height; Y++) {
         for (uint16_t X = 0; X < width; X++) {
             colormap[X + Y * width] = colorchan[X + Y * width] < threshold;
@@ -304,7 +320,9 @@ static void threshold_chan(int16_t *colorchan, uint16_t width, uint16_t height, 
     }
 }
 
-static void threshold_rgb_black_red(int16_t *chanR, int16_t *chanG, int16_t *chanB, uint16_t width, uint16_t height, uint8_t threshold_black, uint8_t threshold_red, uint8_t *blackmap, uint8_t *redmap) {
+static void threshold_rgb_black_red(const int16_t *chanR, const int16_t *chanG, const int16_t *chanB,
+                                    uint16_t width, uint16_t height, uint8_t threshold_black,
+                                    uint8_t threshold_red, uint8_t *blackmap, uint8_t *redmap) {
     for (uint16_t Y = 0; Y < height; Y++) {
         for (uint16_t X = 0; X < width; X++) {
             if ((chanR[X + Y * width] < threshold_black) && (chanG[X + Y * width] < threshold_black) && (chanB[X + Y * width] < threshold_black)) {
@@ -321,7 +339,7 @@ static void threshold_rgb_black_red(int16_t *chanR, int16_t *chanG, int16_t *cha
     }
 }
 
-static void map8to1(uint8_t *colormap, uint16_t width, uint16_t height, uint8_t *colormap8) {
+static void map8to1(const uint8_t *colormap, uint16_t width, uint16_t height, uint8_t *colormap8) {
     uint16_t width8;
     if (width % 8 == 0) {
         width8 = width / 8;
@@ -345,7 +363,7 @@ static void map8to1(uint8_t *colormap, uint16_t width, uint16_t height, uint8_t 
 }
 
 static int read_bmp_rgb(uint8_t *bmp, const size_t bmpsize, uint8_t model_nr, uint8_t **black, uint8_t **red, char *filename, bool save_conversions) {
-    BMP_HEADER *pbmpheader = (BMP_HEADER *)bmp;
+    bmp_header_t *pbmpheader = (bmp_header_t *)bmp;
     // check file is full color
     if ((pbmpheader->bpp != 24) && (pbmpheader->bpp != 32)) {
         return PM3_ESOFT;
@@ -372,18 +390,18 @@ static int read_bmp_rgb(uint8_t *bmp, const size_t bmpsize, uint8_t model_nr, ui
         return PM3_ESOFT;
     }
 
-    int16_t *chanR = calloc(width * height, sizeof(int16_t));
+    int16_t *chanR = calloc(((size_t)width) * height, sizeof(int16_t));
     if (chanR == NULL) {
         return PM3_EMALLOC;
     }
 
-    int16_t *chanG = calloc(width * height, sizeof(int16_t));
+    int16_t *chanG = calloc(((size_t)width) * height, sizeof(int16_t));
     if (chanG == NULL) {
         free(chanR);
         return PM3_EMALLOC;
     }
 
-    int16_t *chanB = calloc(width * height, sizeof(int16_t));
+    int16_t *chanB = calloc(((size_t)width) * height, sizeof(int16_t));
     if (chanB == NULL) {
         free(chanR);
         free(chanG);
@@ -405,14 +423,14 @@ static int read_bmp_rgb(uint8_t *bmp, const size_t bmpsize, uint8_t model_nr, ui
 
     if ((model_nr == M1in54B) || (model_nr == M2in13B)) {
         // for BW+Red screens:
-        uint8_t *mapBlack = calloc((uint32_t)(width * height), sizeof(uint8_t));
+        uint8_t *mapBlack = calloc(((size_t)width) * height, sizeof(uint8_t));
         if (mapBlack == NULL) {
             free(chanR);
             free(chanG);
             free(chanB);
             return PM3_EMALLOC;
         }
-        uint8_t *mapRed = calloc((uint32_t)(width * height), sizeof(uint8_t));
+        uint8_t *mapRed = calloc(((size_t)width) * height, sizeof(uint8_t));
         if (mapRed == NULL) {
             free(chanR);
             free(chanG);
@@ -472,7 +490,7 @@ static int read_bmp_rgb(uint8_t *bmp, const size_t bmpsize, uint8_t model_nr, ui
         free(mapRed);
     } else {
         // for BW-only screens:
-        int16_t *chanGrey = calloc(width * height, sizeof(int16_t));
+        int16_t *chanGrey = calloc(((size_t)width) * height, sizeof(int16_t));
         if (chanGrey == NULL) {
             free(chanR);
             free(chanG);
@@ -482,7 +500,7 @@ static int read_bmp_rgb(uint8_t *bmp, const size_t bmpsize, uint8_t model_nr, ui
         rgb_to_gray(chanR, chanG, chanB, width, height, chanGrey);
         dither_chan_inplace(chanGrey, width, height);
 
-        uint8_t *mapBlack = calloc(width * height, sizeof(uint8_t));
+        uint8_t *mapBlack = calloc(((size_t)width) * height, sizeof(uint8_t));
         if (mapBlack == NULL) {
             free(chanR);
             free(chanG);
@@ -532,12 +550,12 @@ static int read_bmp_rgb(uint8_t *bmp, const size_t bmpsize, uint8_t model_nr, ui
     return PM3_SUCCESS;
 }
 
-static void read_black(uint32_t i, uint8_t *l, uint8_t model_nr, uint8_t *black) {
+static void read_black(uint32_t i, uint8_t *l, uint8_t model_nr, const uint8_t *black) {
     for (uint8_t j = 0; j < models[model_nr].len; j++) {
         l[3 + j] = black[i * models[model_nr].len + j];
     }
 }
-static void read_red(uint32_t i, uint8_t *l, uint8_t model_nr, uint8_t *red) {
+static void read_red(uint32_t i, uint8_t *l, uint8_t model_nr, const uint8_t *red) {
     // spurious warning with GCC10 (-Wstringop-overflow) when j is uint8_t, even if all len are < 128
     for (uint16_t j = 0; j < models[model_nr].len; j++) {
         if (model_nr == M1in54B) {
@@ -593,7 +611,7 @@ static int start_drawing_1in54B(uint8_t model_nr, uint8_t *black, uint8_t *red) 
     uint8_t step_4[2] = {0xcd, 0x04};
     uint8_t step_6[2] = {0xcd, 0x06};
     uint8_t rx[20] = {0};
-    uint16_t actrxlen[20], i = 0, progress = 0;
+    uint16_t actrxlen[20], i, progress;
 
     if (model_nr == M1in54B) {
         step_5[2] = 100;
@@ -616,6 +634,7 @@ static int start_drawing_1in54B(uint8_t model_nr, uint8_t *black, uint8_t *red) 
     if (ret != PM3_SUCCESS) {
         return ret;
     }
+
     PrintAndLogEx(DEBUG, "1.54_Step7: e-paper config2 (red)");
     if (model_nr == M1in54B) {       //1.54inch B Keychain
         for (i = 0; i < 50; i++) {
@@ -635,12 +654,12 @@ static int start_drawing_1in54B(uint8_t model_nr, uint8_t *black, uint8_t *red) 
     if (ret != PM3_SUCCESS) {
         return ret;
     }
+
     PrintAndLogEx(DEBUG, "1.54_Step9");
     return PM3_SUCCESS;
 }
 
 static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
-    uint8_t progress = 0;
     uint8_t step0[2] = {0xcd, 0x0d};
     uint8_t step1[3] = {0xcd, 0x00, 10};  // select e-paper type and reset e-paper
     //  4 :2.13inch e-Paper
@@ -667,14 +686,12 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
 // uint8_t step13[2]={0xcd,0x0b};     // Judge whether the power supply is turned off successfully
 // uint8_t step14[2]={0xcd,0x0c};     // The end of the transmission
     uint8_t rx[20];
-    uint16_t actrxlen[20], i = 0;
-
-
+    uint16_t actrxlen[20];
 
     clearCommandBuffer();
     SendCommandMIX(CMD_HF_ISO14443A_READER, ISO14A_CONNECT | ISO14A_NO_DISCONNECT, 0, 0, NULL, 0);
     PacketResponseNG resp;
-    if (!WaitForResponseTimeout(CMD_ACK, &resp, 2500)) {
+    if (WaitForResponseTimeout(CMD_ACK, &resp, 2500) == false) {
         PrintAndLogEx(ERR, "No tag found");
         DropField();
         return PM3_ETIMEOUT;
@@ -695,56 +712,57 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
         return PM3_ESOFT;
     }
 
-    if ((card.uidlen != 7) || ((memcmp(card.uid, "FSTN10m", 7) != 0) && (memcmp(card.uid, "WSDZ10m", 7) != 0))) {
+    if ((card.uidlen != 7) || ((memcmp(card.uid, "FSTN10m", 7) != 0) && (memcmp(card.uid, "FSTN11m", 7) != 0) && (memcmp(card.uid, "WSDZ10m", 7) != 0))) {
         PrintAndLogEx(WARNING, "Card doesn't look like Waveshare tag");
         DropField();
         return PM3_ESOFT;
     }
-    if (((model_nr != M1in54B) && (memcmp(card.uid, "FSTN10m", 7) == 0))) {
+    if (((model_nr != M1in54B) && ((memcmp(card.uid, "FSTN10m", 7) == 0) || (memcmp(card.uid, "FSTN11m", 7) == 0)))) {
         PrintAndLogEx(WARNING, "Card is a Waveshare tag 1.54\", not %s", models[model_nr].desc);
         DropField();
         return PM3_ESOFT;
     }
-    if (((model_nr == M1in54B) && (memcmp(card.uid, "FSTN10m", 7) != 0))) {
+    if (((model_nr == M1in54B) && (memcmp(card.uid, "FSTN10m", 7) != 0) && (memcmp(card.uid, "FSTN11m", 7) != 0))) {
         PrintAndLogEx(WARNING, "Card is not a Waveshare tag 1.54\", check your model number");
         DropField();
         return PM3_ESOFT;
     }
     PrintAndLogEx(DEBUG, "model_nr = %d", model_nr);
-    int ret;
+
     PrintAndLogEx(DEBUG, "Step0");
-    ret = transceive_blocking(step0, 2, rx, 20, actrxlen, true);  //cd 0d
+    int ret = transceive_blocking(step0, 2, rx, 20, actrxlen, true);  //cd 0d
     if (ret != PM3_SUCCESS) {
         return ret;
     }
+
     PrintAndLogEx(DEBUG, "Step1: e-paper config");
-    //step1[2] screen model
-    //step8[2] nr of bytes sent at once
-    //step13[2] nr of bytes sent for the second time
+    // step1[2] screen model
+    // step8[2] nr of bytes sent at once
+    // step13[2] nr of bytes sent for the second time
     // generally, step8 sends a black image, step13 sends a red image
-    if (model_nr == M2in13) {        //2.13inch
+    if (model_nr == M2in13) {        // 2.13inch
         step1[2] = EPD_2IN13V2;
         step8[2] = 16;
         step13[2] = 0;
-    } else if (model_nr == M2in9) {  //2.9inch
+    } else if (model_nr == M2in9) {  // 2.9inch
         step1[2] = EPD_2IN9;
         step8[2] = 16;
         step13[2] = 0;
-    } else if (model_nr == M4in2) {  //4.2inch
+    } else if (model_nr == M4in2) {  // 4.2inch
         step1[2] = EPD_4IN2;
         step8[2] = 100;
         step13[2] = 0;
-    } else if (model_nr == M7in5) {  //7.5inch
+    } else if (model_nr == M7in5) {  // 7.5inch
         step1[2] = EPD_7IN5V2;
         step8[2] = 120;
         step13[2] = 0;
-    } else if (model_nr == M2in7) {  //2.7inch
+    } else if (model_nr == M2in7) {  // 2.7inch
         step1[2] = EPD_2IN7;
         step8[2] = 121;
         // Send blank data for the first time, and send other data to 0xff without processing the bottom layer
         step13[2] = 121;
-        //Sending the second data is the real image data. If the previous 0xff is not sent, the last output image is abnormally black
-    } else if (model_nr == M2in13B) {  //2.13inch B
+        // Sending the second data is the real image data. If the previous 0xff is not sent, the last output image is abnormally black
+    } else if (model_nr == M2in13B) {  // 2.13inch B
         step1[2] = EPD_2IN13BC;
         step8[2] = 106;
         step13[2] = 106;
@@ -755,31 +773,35 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
     }
 
     if (model_nr == M1in54B) {
-        ret = transceive_blocking(step1, 2, rx, 20, actrxlen, true);  //cd 00
+        ret = transceive_blocking(step1, 2, rx, 20, actrxlen, true);  // cd 00
     } else {
         ret = transceive_blocking(step1, 3, rx, 20, actrxlen, true);
     }
     if (ret != PM3_SUCCESS) {
         return ret;
     }
+
     msleep(100);
     PrintAndLogEx(DEBUG, "Step2: e-paper normal mode type");
-    ret = transceive_blocking(step2, 2, rx, 20, actrxlen, true);   //cd 01
+    ret = transceive_blocking(step2, 2, rx, 20, actrxlen, true);  // cd 01
     if (ret != PM3_SUCCESS) {
         return ret;
     }
+
     msleep(100);
     PrintAndLogEx(DEBUG, "Step3: e-paper config1");
-    ret = transceive_blocking(step3, 2, rx, 20, actrxlen, true); //cd 02
+    ret = transceive_blocking(step3, 2, rx, 20, actrxlen, true); // cd 02
     if (ret != PM3_SUCCESS) {
         return ret;
     }
+
     msleep(200);
     PrintAndLogEx(DEBUG, "Step4: e-paper power on");
-    ret = transceive_blocking(step4, 2, rx, 20, actrxlen, true); //cd 03
+    ret = transceive_blocking(step4, 2, rx, 20, actrxlen, true); // cd 03
     if (ret != PM3_SUCCESS) {
         return ret;
     }
+
     if (model_nr == M1in54B) {
         // 1.54B Keychain handler
         PrintAndLogEx(DEBUG, "Start_Drawing_1in54B");
@@ -787,28 +809,29 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
         if (ret != PM3_SUCCESS) {
             return ret;
         }
-        //1.54B Data transfer is complete and wait for refresh
+        // 1.54B Data transfer is complete and wait for refresh
     } else {
+        uint8_t progress;
         PrintAndLogEx(DEBUG, "Step5: e-paper config2");
-        ret = transceive_blocking(step5, 2, rx, 20, actrxlen, true);   //cd 05
+        ret = transceive_blocking(step5, 2, rx, 20, actrxlen, true); // cd 05
         if (ret != PM3_SUCCESS) {
             return ret;
         }
         msleep(100);
         PrintAndLogEx(DEBUG, "Step6: EDP load to main") ;
-        ret = transceive_blocking(step6, 2, rx, 20, actrxlen, true); //cd 06
+        ret = transceive_blocking(step6, 2, rx, 20, actrxlen, true); // cd 06
         if (ret != PM3_SUCCESS) {
             return ret;
         }
         msleep(100);
         PrintAndLogEx(DEBUG, "Step7: Data preparation");
-        ret = transceive_blocking(step7, 2, rx, 20, actrxlen, true); //cd 07
+        ret = transceive_blocking(step7, 2, rx, 20, actrxlen, true); // cd 07
         if (ret != PM3_SUCCESS) {
             return ret;
         }
         PrintAndLogEx(DEBUG, "Step8: Start data transfer");
-        if (model_nr == M2in13) {      //2.13inch
-            for (i = 0; i < 250; i++) {
+        if (model_nr == M2in13) {      // 2.13inch
+            for (uint16_t i = 0; i < 250; i++) {
                 read_black(i, step8, model_nr, black);
                 ret = transceive_blocking(step8, 19, rx, 20, actrxlen, true); // cd 08
                 if (ret != PM3_SUCCESS) {
@@ -818,7 +841,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
                 PrintAndLogEx(INPLACE, "Progress: %d %%", progress);
             }
         } else if (model_nr == M2in9) {
-            for (i = 0; i < 296; i++) {
+            for (uint16_t i = 0; i < 296; i++) {
                 read_black(i, step8, model_nr, black);
                 ret = transceive_blocking(step8, 19, rx, 20, actrxlen, true); // cd 08
                 if (ret != PM3_SUCCESS) {
@@ -828,7 +851,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
                 PrintAndLogEx(INPLACE, "Progress: %d %%", progress);
             }
         } else if (model_nr == M4in2) {    //4.2inch
-            for (i = 0; i < 150; i++) {
+            for (uint16_t i = 0; i < 150; i++) {
                 read_black(i, step8, model_nr, black);
                 ret = transceive_blocking(step8, 103, rx, 20, actrxlen, true); // cd 08
                 if (ret != PM3_SUCCESS) {
@@ -838,7 +861,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
                 PrintAndLogEx(INPLACE, "Progress: %d %%", progress);
             }
         } else if (model_nr == M7in5) {  //7.5inch
-            for (i = 0; i < 400; i++) {
+            for (uint16_t i = 0; i < 400; i++) {
                 read_black(i, step8, model_nr, black);
                 ret = transceive_blocking(step8, 123, rx, 20, actrxlen, true); // cd 08
                 if (ret != PM3_SUCCESS) {
@@ -849,7 +872,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
                 msleep(6);
             }
         } else if (model_nr == M2in13B) {  //2.13inch B
-            for (i = 0; i < 26; i++) {
+            for (uint16_t i = 0; i < 26; i++) {
                 read_black(i, step8, model_nr, black);
                 ret = transceive_blocking(step8, 109, rx, 20, actrxlen, false); // cd 08
                 if (ret != PM3_SUCCESS) {
@@ -860,7 +883,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
             }
         } else if (model_nr == M7in5HD) {  //7.5HD
 
-            for (i = 0; i < 484; i++) {
+            for (uint16_t i = 0; i < 484; i++) {
                 read_black(i, step8, model_nr, black);
                 //memset(&step8[3], 0xf0, 120);
                 ret = transceive_blocking(step8, 123, rx, 20, actrxlen, true); // cd 08
@@ -876,7 +899,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
                 return ret;
             }
         } else if (model_nr == M2in7) {   //2.7inch
-            for (i = 0; i < 48; i++) {
+            for (uint16_t i = 0; i < 48; i++) {
                 //read_black(i,step8, model_nr, black);
                 memset(&step8[3], 0xFF, sizeof(step8) - 3);
                 ret = transceive_blocking(step8, 124, rx, 20, actrxlen, true); // cd 08
@@ -902,7 +925,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
             }
             PrintAndLogEx(DEBUG, "Step9b");
             if (model_nr == M2in7) {
-                for (i = 0; i < 48; i++) {
+                for (uint16_t i = 0; i < 48; i++) {
                     read_black(i, step13, model_nr, black);
                     ret = transceive_blocking(step13, 124, rx, 20, actrxlen, true); //CD 19
                     if (ret != PM3_SUCCESS) {
@@ -912,7 +935,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
                     PrintAndLogEx(INPLACE, "Progress: %d %%", progress);
                 }
             } else if (model_nr == M2in13B) {
-                for (i = 0; i < 26; i++) {
+                for (uint16_t i = 0; i < 26; i++) {
                     read_red(i, step13, model_nr, red);
                     //memset(&step13[3], 0xfE, 106);
                     ret = transceive_blocking(step13, 109, rx, 20, actrxlen, false);
@@ -939,6 +962,7 @@ static int start_drawing(uint8_t model_nr, uint8_t *black, uint8_t *red) {
     } else if (model_nr == M7in5HD) {
         msleep(1000);
     }
+
     uint8_t fail_num = 0;
     while (1) {
         if (model_nr == M1in54B) {
@@ -1006,7 +1030,7 @@ static int CmdHF14AWSLoadBmp(const char *Cmd) {
         arg_param_begin,
         arg_int1("m", NULL, "<nr>", modeldesc),
         arg_lit0("s", "save", "save dithered version in filename-[n].bmp, only for RGB BMP"),
-        arg_str1("f", "file", "<filename>", "filename[.bmp] to upload to tag"),
+        arg_str1("f", "file", "<fn>", "specify filename[.bmp] to upload to tag"),
         arg_param_end
     };
 
@@ -1040,7 +1064,14 @@ static int CmdHF14AWSLoadBmp(const char *Cmd) {
     size_t bytes_read = 0;
     if (loadFile_safe(filename, ".bmp", (void **)&bmp, &bytes_read) != PM3_SUCCESS) {
         PrintAndLogEx(WARNING, "Could not find file " _YELLOW_("%s"), filename);
-        return PM3_EIO;
+        return PM3_EFILE;
+    }
+    if (bmp == NULL) {
+        return PM3_EMALLOC;
+    }
+    if (bytes_read < sizeof(bmp_header_t)) {
+        free(bmp);
+        return PM3_ESOFT;
     }
 
     int depth = picture_bit_depth(bmp, bytes_read, model_nr);

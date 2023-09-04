@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2016 iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Analyse bytes commands
 //-----------------------------------------------------------------------------
@@ -21,9 +29,8 @@
 #include "crc.h"
 #include "crc16.h"        // crc16 ccitt
 #include "crc32.h"        // crc32_ex
-#include "tea.h"
 #include "legic_prng.h"
-#include "cmddata.h"      // demodbuffer
+#include "cmddata.h"      // g_DemodBuffer
 #include "graph.h"
 #include "proxgui.h"
 #include "cliparser.h"
@@ -32,10 +39,10 @@
 
 static int CmdHelp(const char *Cmd);
 
-static uint8_t calculateLRC(uint8_t *bytes, uint8_t len) {
+static uint8_t calculateLRC(const uint8_t *d, uint8_t n) {
     uint8_t lcr = 0;
-    for (uint8_t i = 0; i < len; i++)
-        lcr ^= bytes[i];
+    for (uint8_t i = 0; i < n; i++)
+        lcr ^= d[i];
     return lcr;
 }
 /*
@@ -56,7 +63,7 @@ static uint16_t shiftadd ( uint8_t* bytes, uint8_t len){
     return 0;
 }
 */
-static uint16_t calcSumCrumbAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumCrumbAdd(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum += CRUMB(bytes[i], 0);
@@ -67,10 +74,10 @@ static uint16_t calcSumCrumbAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
     sum &= mask;
     return (sum & 0xFFFF);
 }
-static uint16_t calcSumCrumbAddOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumCrumbAddOnes(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumCrumbAdd(bytes, len, mask) & mask);
 }
-static uint16_t calcSumNibbleAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumNibbleAdd(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum += NIBBLE_LOW(bytes[i]);
@@ -82,7 +89,7 @@ static uint16_t calcSumNibbleAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
 static uint16_t calcSumNibbleAddOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumNibbleAdd(bytes, len, mask) & mask);
 }
-static uint16_t calcSumCrumbXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumCrumbXor(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum ^= CRUMB(bytes[i], 0);
@@ -93,7 +100,7 @@ static uint16_t calcSumCrumbXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
     sum &= mask;
     return (sum & 0xFFFF);
 }
-static uint16_t calcSumNibbleXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumNibbleXor(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum ^= NIBBLE_LOW(bytes[i]);
@@ -102,7 +109,7 @@ static uint16_t calcSumNibbleXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
     sum &= mask;
     return (sum & 0xFFFF);
 }
-static uint16_t calcSumByteXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumByteXor(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum ^= bytes[i];
@@ -110,7 +117,7 @@ static uint16_t calcSumByteXor(uint8_t *bytes, uint8_t len, uint32_t mask) {
     sum &= mask;
     return (sum & 0xFFFF);
 }
-static uint16_t calcSumByteAdd(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumByteAdd(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum += bytes[i];
@@ -123,7 +130,7 @@ static uint16_t calcSumByteAddOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumByteAdd(bytes, len, mask) & mask);
 }
 
-static uint16_t calcSumByteSub(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumByteSub(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum -= bytes[i];
@@ -134,7 +141,7 @@ static uint16_t calcSumByteSub(uint8_t *bytes, uint8_t len, uint32_t mask) {
 static uint16_t calcSumByteSubOnes(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (~calcSumByteSub(bytes, len, mask) & mask);
 }
-static uint16_t calcSumNibbleSub(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcSumNibbleSub(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum -= NIBBLE_LOW(bytes[i]);
@@ -148,7 +155,7 @@ static uint16_t calcSumNibbleSubOnes(uint8_t *bytes, uint8_t len, uint32_t mask)
 }
 
 // BSD shift checksum 8bit version
-static uint16_t calcBSDchecksum8(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcBSDchecksum8(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum = ((sum & 0xFF) >> 1) | ((sum & 0x1) << 7);   // rotate accumulator
@@ -159,7 +166,7 @@ static uint16_t calcBSDchecksum8(uint8_t *bytes, uint8_t len, uint32_t mask) {
     return (sum & 0xFFFF);
 }
 // BSD shift checksum 4bit version
-static uint16_t calcBSDchecksum4(uint8_t *bytes, uint8_t len, uint32_t mask) {
+static uint16_t calcBSDchecksum4(const uint8_t *bytes, uint8_t len, uint32_t mask) {
     uint32_t sum = 0;
     for (uint8_t i = 0; i < len; i++) {
         sum = ((sum & 0xF) >> 1) | ((sum & 0x1) << 3);   // rotate accumulator
@@ -304,7 +311,7 @@ static int CmdAnalyseCRC(const char *Cmd) {
     PrintAndLogEx(INFO, "       reflect8(0x80) is %02X == 0x01", reflect8(0x80));
     PrintAndLogEx(INFO, "    reflect16(0x8000) is %04X == 0x0001", reflect16(0xc6c6));
 
-    uint8_t b1, b2;
+    uint8_t b1 = 0, b2 = 0;
     // ISO14443 crc B
     compute_crc(CRC_14443_B, data, (size_t)dlen, &b1, &b2);
     uint16_t crcBB_1 = (uint16_t)(b1 << 8 | b2);
@@ -478,55 +485,6 @@ static int CmdAnalyseDates(const char *Cmd) {
     CLIExecWithReturn(ctx, Cmd, argtable, true);
     CLIParserFree(ctx);
     PrintAndLogEx(NORMAL, "To be implemented. Feel free to contribute!");
-    return PM3_SUCCESS;
-}
-
-static int CmdAnalyseTEASelfTest(const char *Cmd) {
-    CLIParserContext *ctx;
-    CLIParserInit(&ctx, "analyse tea",
-                  "Crypto TEA self tests",
-                  "analyse tea -d 1122334455667788"
-                 );
-
-    void *argtable[] = {
-        arg_param_begin,
-        arg_str1("d", "data", "<hex>", "bytes to encrypt ( 8 hex bytes )"),
-        arg_param_end
-    };
-    CLIExecWithReturn(ctx, Cmd, argtable, true);
-    int dlen = 0;
-    uint8_t data[8] = {0x00};
-    int res = CLIParamHexToBuf(arg_get_str(ctx, 1), data, sizeof(data), &dlen);
-    CLIParserFree(ctx);
-    if (res) {
-        PrintAndLogEx(FAILED, "Error parsing bytes");
-        return PM3_EINVARG;
-    }
-
-    uint8_t v_le[8];
-    memset(v_le, 0x00, sizeof(v_le));
-    uint8_t *v_ptr = v_le;
-
-    SwapEndian64ex(data, 8, 4, v_ptr);
-
-    // ENCRYPTION KEY:
-    uint8_t key[16] = {0x55, 0xFE, 0xF6, 0x30, 0x62, 0xBF, 0x0B, 0xC1, 0xC9, 0xB3, 0x7C, 0x34, 0x97, 0x3E, 0x29, 0xFB };
-    uint8_t keyle[16];
-    uint8_t *key_ptr = keyle;
-    SwapEndian64ex(key, sizeof(key), 4, key_ptr);
-
-    PrintAndLogEx(INFO, "TEA crypto testing");
-    PrintAndLogEx(INFO, "-----------------------------------+---------");
-    PrintAndLogEx(INFO, "LE enc.... %s", sprint_hex_ascii(v_ptr, 8));
-
-    tea_decrypt(v_ptr, key_ptr);
-    PrintAndLogEx(INFO, "LE dec.... %s", sprint_hex_ascii(v_ptr, 8));
-
-    tea_encrypt(v_ptr, key_ptr);
-    PrintAndLogEx(INFO, "enc1...... %s", sprint_hex_ascii(v_ptr, 8));
-    tea_encrypt(v_ptr, key_ptr);
-    PrintAndLogEx(INFO, "enc2...... %s", sprint_hex_ascii(v_ptr, 8));
-    PrintAndLogEx(NORMAL, "");
     return PM3_SUCCESS;
 }
 
@@ -936,7 +894,7 @@ static int CmdAnalyseNuid(const char *Cmd) {
 static int CmdAnalyseDemodBuffer(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "analyse demodbuff",
-                  "loads a binary string into demod buffer",
+                  "loads a binary string into DemodBuffer",
                   "analyse demodbuff -d 0011101001001011"
                  );
 
@@ -959,9 +917,9 @@ static int CmdAnalyseDemodBuffer(const char *Cmd) {
     for (size_t i = 0; i <= strlen(s); i++) {
         char c = s[i];
         if (c == '1')
-            DemodBuffer[i] = 1;
+            g_DemodBuffer[i] = 1;
         if (c == '0')
-            DemodBuffer[i] = 0;
+            g_DemodBuffer[i] = 0;
 
         PrintAndLogEx(NORMAL, "%c" NOLF, c);
     }
@@ -969,9 +927,9 @@ static int CmdAnalyseDemodBuffer(const char *Cmd) {
     CLIParserFree(ctx);
 
     PrintAndLogEx(NORMAL, "");
-    DemodBufferLen = len;
+    g_DemodBufferLen = len;
     free(data);
-    PrintAndLogEx(HINT, "Use `" _YELLOW_("data print") "` to view demod buffer");
+    PrintAndLogEx(HINT, "Use `" _YELLOW_("data print") "` to view DemodBuffer");
     return PM3_SUCCESS;
 }
 
@@ -979,14 +937,22 @@ static int CmdAnalyseFreq(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "analyse freq",
                   "calc wave lengths",
-                  "analyse freq"
+                  "analyse freq\n"
+                  ""
                  );
 
     void *argtable[] = {
         arg_param_begin,
+        arg_int0("F", "freq", "<int>", "resonating frequency F in hertz (Hz)"),
+        arg_int0("L", "cap",  "<int>", "capacitance C in micro farads (F)"),
+        arg_int0("C", "ind",  "<int>", "inductance in micro henries (H)"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
+
+    int F = arg_get_int_def(ctx, 1, 0);
+    int L = arg_get_int_def(ctx, 2, 0);
+    int C = arg_get_int_def(ctx, 3, 0);
     CLIParserFree(ctx);
 
     const double c = 299792458;
@@ -1002,6 +968,35 @@ static int CmdAnalyseFreq(const char *Cmd) {
     PrintAndLogEx(INFO, "   125 kHz has %f m, rf range %f m", len_125, rf_range_125);
     PrintAndLogEx(INFO, "   134 kHz has %f m, rf range %f m", len_134, rf_range_134);
     PrintAndLogEx(INFO, " 13.56 mHz has %f m, rf range %f m", len_1356, rf_range_1356);
+
+
+    if (F == 0 && C == 0 && L == 0)
+        return PM3_SUCCESS;
+
+
+    PrintAndLogEx(INFO, "");
+    PrintAndLogEx(INFO, "Resonant frequency calculator");
+
+    // From  https://goodcalculators.com/resonant-frequency-calculator/
+    // Calc Resonant Frequency [Hz]
+    // f = 1 / (2π √L C)
+    if (F == 0) {
+        double calc_freq = 1 / (2 * M_PI * sqrtf((L * C)));
+        PrintAndLogEx(INFO, "Resonating Frequency  %lf Hz", calc_freq);
+    }
+    // Calc Inductance [H]
+    // L = 1 / (4π2 f2 C)
+    if (L == 0) {
+        double calc_inductance = 1 / (4 * (M_PI * M_PI) * (F * F) * C);
+        PrintAndLogEx(INFO, "Inductance %lf Henries", calc_inductance);
+    }
+
+    // Capacitance [F]
+    //  C = 1 / (4π2 f2 L)
+    if (C == 0) {
+        double calc_capacitance = 1 / (4 * (M_PI * M_PI) * (F * F) * L);
+        PrintAndLogEx(INFO, "Capacitance %lf Farads", calc_capacitance);
+    }
     return PM3_SUCCESS;
 }
 
@@ -1015,7 +1010,7 @@ static int CmdAnalyseFoo(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_strx0("r", "raw",  "<hex>", "raw bytes (strx)"),
+        arg_str1("r", "raw",  "<hex>", "raw bytes"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -1036,7 +1031,7 @@ static int CmdAnalyseFoo(const char *Cmd) {
     PrintAndLogEx(INFO, "Got:  %s", data3);
 
     ClearGraph(false);
-    GraphTraceLen = 15000;
+    g_GraphTraceLen = 15000;
 
     for (int i = 0; i < 4095; i++) {
         int o = 0;
@@ -1049,7 +1044,7 @@ static int CmdAnalyseFoo(const char *Cmd) {
         if (i & 0x0E00) o |= 0x20;    // corr_i_accum[12] | corr_i_accum[11] | corr_i_accum[9],
         o |= (i & 0x1F0) >> 4;        // corr_i_accum[8:4]
 
-        GraphBuffer[i] = o;
+        g_GraphBuffer[i] = o;
     }
 
     for (int i = 0; i < 4095; i++) {
@@ -1066,12 +1061,12 @@ static int CmdAnalyseFoo(const char *Cmd) {
                 o |= 0x7f;     //  corr_i_out <= 8'b01111111;
             }
         }
-        GraphBuffer[i + 5000] = o;
+        g_GraphBuffer[i + 5000] = o;
     }
 
     for (int i = 0; i < 4095; i++) {
         int o = i >> 5;
-        GraphBuffer[i + 10000] = o;
+        g_GraphBuffer[i + 10000] = o;
     }
 
     RepaintGraphWindow();
@@ -1084,71 +1079,86 @@ static int CmdAnalyseUnits(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "analyse units",
                   "experiments of unit conversions found in HF. ETU (1/13.56mhz), US or SSP_CLK (1/3.39MHz)",
-                  "analyse uints --etu 10"
-                  "analyse uints --us 100"
+                  "analyse uints --etu 10\n"
+                  "analyse uints --us 100\n"
                  );
 
     void *argtable[] = {
         arg_param_begin,
         arg_int0(NULL, "etu", "<dec>", "number in ETU"),
         arg_int0(NULL, "us", "<dec>", "number in micro seconds (us)"),
+        arg_lit0("t", "selftest", "self tests"),
         arg_param_end
     };
-    CLIExecWithReturn(ctx, Cmd, argtable, false);
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
 
     int etu = arg_get_int_def(ctx, 1, -1);
     int us = arg_get_int_def(ctx, 2, -1);
+    bool selftest = arg_get_lit(ctx, 3);
     CLIParserFree(ctx);
 
-    if (etu == -1 && us == -1) {
+    if (selftest) {
         PrintAndLogEx(INFO, "US to ETU conversions");
-        PrintAndLogEx(INFO, "  9 US = %u ETU (expect 1) " _GREEN_("ok"), US_TO_ETU(9));
-        PrintAndLogEx(INFO, "  10 US = %u ETU (expect 1) " _GREEN_("ok"), US_TO_ETU(10));
-        PrintAndLogEx(INFO, "  94 US = %u ETU (expect 10) " _GREEN_("ok"), US_TO_ETU(94));
-        PrintAndLogEx(INFO, "  95 US = %u ETU (expect 10) " _GREEN_("ok"), US_TO_ETU(95));
-        PrintAndLogEx(INFO, "  302 US = %u ETU (expect 32) " _GREEN_("ok"), US_TO_ETU(302));
+
+        int32_t test = US_TO_ETU(9);
+        PrintAndLogEx(INFO, "  9 US = %i ETU (expect 1) %s", test, (test == 1) ? _GREEN_("ok") : _RED_("fail"));
+
+        test = US_TO_ETU(10);
+        PrintAndLogEx(INFO, "  10 US = %i ETU (expect 1) %s", test, (test == 1) ? _GREEN_("ok") : _RED_("fail"));
+
+        test = US_TO_ETU(94);
+        PrintAndLogEx(INFO, "  94 US = %i ETU (expect 10) %s", test, (test == 10) ? _GREEN_("ok") : _RED_("fail"));
+
+        test = US_TO_ETU(95);
+        PrintAndLogEx(INFO, "  95 US = %i ETU (expect 10) %s", test, (test == 10) ? _GREEN_("ok") : _RED_("fail"));
+
+        test = US_TO_ETU(302);
+        PrintAndLogEx(INFO, "  302 US = %i ETU (expect 32) %s", test, (test == 10) ? _GREEN_("ok") : _RED_("fail"));
         PrintAndLogEx(NORMAL, "");
 
-        PrintAndLogEx(INFO, "ETU to US conversions");
-        PrintAndLogEx(INFO, "   1 ETU = %u US (expect 9.43) " _GREEN_("ok"), ETU_TO_US(1));
-        PrintAndLogEx(INFO, "  10 ETU = %u US (expect 94.39) " _GREEN_("ok"), ETU_TO_US(10));
-        PrintAndLogEx(INFO, "  32 ETU = %u US (expect 302) " _GREEN_("ok"), ETU_TO_US(32));
+        PrintAndLogEx(INFO, "ETU to Micro seconds (µS) conversions");
+        double test_us = HF14_ETU_TO_US(1);
+        PrintAndLogEx(INFO, "   1 ETU = %3.2f US (expect 9.44) %s", test_us, (test_us == 9.44) ? _GREEN_("ok") : _RED_("fail"));
+        test_us = HF14_ETU_TO_US(10);
+        PrintAndLogEx(INFO, "  10 ETU = %4.2f US (expect 94.40) %s", test_us, (test_us == 94.40) ? _GREEN_("ok") : _RED_("fail"));
+        test_us = HF14_ETU_TO_US(32);
+        PrintAndLogEx(INFO, "  32 ETU = %5.2f US (expect 302.06) %s", test_us, (test_us == 320.06) ? _GREEN_("ok") : _RED_("fail"));
+
         PrintAndLogEx(NORMAL, "");
 
-        PrintAndLogEx(INFO, "US to SSP CLK 3.39MHz conversions");
-        PrintAndLogEx(INFO, "   9 US = %u SSP (expect 32) ", US_TO_SSP(9));
-        PrintAndLogEx(INFO, "  10 US = %u SSP (expect 32 or 48) ", US_TO_SSP(10));
-        PrintAndLogEx(INFO, "  94 US = %u SSP (expect 320) ", US_TO_SSP(94));
-        PrintAndLogEx(INFO, "  95 US = %u SSP (expect 320 or 336) ", US_TO_SSP(95));
-        PrintAndLogEx(INFO, "  302 US = %u SSP (expect 1024) ", US_TO_SSP(302));
+        PrintAndLogEx(INFO, "Microseconds (µS) to SSP CLK 3.39MHz conversions");
+        PrintAndLogEx(INFO, "   9 µS = %i SSP (expect 32) ", US_TO_SSP(9));
+        PrintAndLogEx(INFO, "  10 µS = %i SSP (expect 32 or 48) ", US_TO_SSP(10));
+        PrintAndLogEx(INFO, "  94 µS = %i SSP (expect 320) ", US_TO_SSP(94));
+        PrintAndLogEx(INFO, "  95 µS = %i SSP (expect 320 or 336) ", US_TO_SSP(95));
+        PrintAndLogEx(INFO, "  302 µS = %i SSP (expect 1024) ", US_TO_SSP(302));
 
-        PrintAndLogEx(INFO, "  4949000 US = %u SSP ", US_TO_SSP(4949000));
+        PrintAndLogEx(INFO, "  4949000 µS = %i SSP ", US_TO_SSP(4949000));
 
         PrintAndLogEx(NORMAL, "");
 
         PrintAndLogEx(INFO, "SSP CLK 3.39MHz to US conversions");
-        PrintAndLogEx(INFO, "  32 SSP = %u US (expext 9 or 10) " _GREEN_("ok"), SSP_TO_US(32));
-        PrintAndLogEx(INFO, " 320 SSP = %u US (expext 94 or 95) " _GREEN_("ok"), SSP_TO_US(320));
-        PrintAndLogEx(INFO, "1024 SSP = %u US (expext 302) " _GREEN_("ok"), SSP_TO_US(1024));
+        PrintAndLogEx(INFO, "  32 SSP = %i US (expect 9 or 10) " _GREEN_("ok"), SSP_TO_US(32));
+        PrintAndLogEx(INFO, " 320 SSP = %i US (expect 94 or 95) " _GREEN_("ok"), SSP_TO_US(320));
+        PrintAndLogEx(INFO, "1024 SSP = %i US (expect 302) " _GREEN_("ok"), SSP_TO_US(1024));
         PrintAndLogEx(NORMAL, "");
 
         PrintAndLogEx(INFO, "ETU to SSP CLK 3.39MHz conversions");
-        PrintAndLogEx(INFO, "   1 ETU = %u SSP (expect 32) " _GREEN_("ok"), ETU_TO_SSP(1));
-        PrintAndLogEx(INFO, "  10 ETU = %u SSP (expect 320) " _GREEN_("ok"), ETU_TO_SSP(10));
-        PrintAndLogEx(INFO, "  32 ETU = %u SSP (expect 1024) " _GREEN_("ok"), ETU_TO_SSP(32));
+        PrintAndLogEx(INFO, "   1 ETU = %i SSP (expect 32) " _GREEN_("ok"), HF14_ETU_TO_SSP(1));
+        PrintAndLogEx(INFO, "  10 ETU = %i SSP (expect 320) " _GREEN_("ok"), HF14_ETU_TO_SSP(10));
+        PrintAndLogEx(INFO, "  32 ETU = %i SSP (expect 1024) " _GREEN_("ok"), HF14_ETU_TO_SSP(32));
         PrintAndLogEx(NORMAL, "");
 
         PrintAndLogEx(INFO, "SSP CLK 3.39MHz to ETU conversions");
-        PrintAndLogEx(INFO, "1024 SSP = %u ETU (expect 32) " _GREEN_("ok"), SSP_TO_ETU(1024));
-        PrintAndLogEx(INFO, " 320 SSP = %u ETU (expect 10) " _GREEN_("ok"), SSP_TO_ETU(320));
-        PrintAndLogEx(INFO, "  32 SSP = %u ETU (expect 1) " _GREEN_("ok"), SSP_TO_ETU(32));
-    } else if (etu) {
+        PrintAndLogEx(INFO, "1024 SSP = %i ETU (expect 32) " _GREEN_("ok"), HF14_SSP_TO_ETU(1024));
+        PrintAndLogEx(INFO, " 320 SSP = %i ETU (expect 10) " _GREEN_("ok"), HF14_SSP_TO_ETU(320));
+        PrintAndLogEx(INFO, "  32 SSP = %i ETU (expect 1) " _GREEN_("ok"), HF14_SSP_TO_ETU(32));
+    } else if (etu > -1) {
 
-        PrintAndLogEx(INFO, " %d ETU = %u us ", ETU_TO_US(etu));
-        PrintAndLogEx(INFO, " %d ETU = %u SSP ", ETU_TO_SSP(etu));
-    } else if (us) {
-        PrintAndLogEx(INFO, " %d us = %u ETU ", US_TO_ETU(us));
-        PrintAndLogEx(INFO, " %d us = %u SSP ", US_TO_SSP(us));
+        PrintAndLogEx(INFO, " %i ETU = %3.2f µS", etu, HF14_ETU_TO_US(etu));
+        PrintAndLogEx(INFO, " %i ETU = %i SSP", etu, HF14_ETU_TO_SSP(etu));
+    } else if (us > -1) {
+        PrintAndLogEx(INFO, " %i µS = %3.2f ETU = %u SSP", us, US_TO_ETU(us), US_TO_SSP(us));
     }
 
     return PM3_SUCCESS;
@@ -1160,11 +1170,10 @@ static command_t CommandTable[] = {
     {"crc",     CmdAnalyseCRC,      AlwaysAvailable, "Stub method for CRC evaluations"},
     {"chksum",  CmdAnalyseCHKSUM,   AlwaysAvailable, "Checksum with adding, masking and one's complement"},
     {"dates",   CmdAnalyseDates,    AlwaysAvailable, "Look for datestamps in a given array of bytes"},
-    {"tea",     CmdAnalyseTEASelfTest, AlwaysAvailable, "Crypto TEA test"},
     {"lfsr",    CmdAnalyseLfsr,     AlwaysAvailable, "LFSR tests"},
     {"a",       CmdAnalyseA,        AlwaysAvailable, "num bits test"},
     {"nuid",    CmdAnalyseNuid,     AlwaysAvailable, "create NUID from 7byte UID"},
-    {"demodbuff", CmdAnalyseDemodBuffer, AlwaysAvailable, "Load binary string to demodbuffer"},
+    {"demodbuff", CmdAnalyseDemodBuffer, AlwaysAvailable, "Load binary string to DemodBuffer"},
     {"freq",    CmdAnalyseFreq,     AlwaysAvailable, "Calc wave lengths"},
     {"foo",     CmdAnalyseFoo,      AlwaysAvailable, "muxer"},
     {"units",   CmdAnalyseUnits,    AlwaysAvailable, "convert ETU <> US <> SSP_CLK (3.39MHz)"},

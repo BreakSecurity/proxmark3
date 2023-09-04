@@ -1,13 +1,18 @@
 //-----------------------------------------------------------------------------
-// Jonathan Westhues, Mar 2006
-// Edits by Gerhard de Koning Gans, Sep 2007 (##)
+// Copyright (C) Jonathan Westhues, Mar 2006
+// Copyright (C) Gerhard de Koning Gans, Sep 2007
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
-//-----------------------------------------------------------------------------
-// The main application code. This is the first thing called after start.c
-// executes.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 
 #include "dbprint.h"
@@ -69,7 +74,7 @@ void Dbprintf(const char *fmt, ...) {
 }
 
 // prints HEX & ASCII
-void Dbhexdump(int len, uint8_t *d, bool bAsci) {
+void Dbhexdump(int len, const uint8_t *d, bool bAsci) {
 #if DEBUG
     char ascii[9];
 
@@ -98,9 +103,9 @@ void Dbhexdump(int len, uint8_t *d, bool bAsci) {
 #endif
 }
 
-void print_result(const char *name, uint8_t *buf, size_t len) {
+void print_result(const char *name, const uint8_t *buf, size_t len) {
 
-    uint8_t *p = buf;
+    const uint8_t *p = buf;
     uint16_t tmp = len & 0xFFF0;
 
     for (; p - buf < tmp; p += 16) {

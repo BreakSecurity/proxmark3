@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2019 Merlok
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // NFC Data Exchange Format (NDEF) functions
 //-----------------------------------------------------------------------------
@@ -14,6 +22,8 @@
 #include <stdbool.h>
 #include "common.h"
 
+#define NDEF_MFC_AID    0xE103
+
 typedef enum {
     tnfEmptyRecord          = 0x00,
     tnfWellKnownRecord      = 0x01,
@@ -21,7 +31,8 @@ typedef enum {
     tnfAbsoluteURIRecord    = 0x03,
     tnfExternalRecord       = 0x04,
     tnfUnknownRecord        = 0x05,
-    tnfUnchangedRecord      = 0x06
+    tnfUnchangedRecord      = 0x06,
+    tnfReservedRecord       = 0x07,
 } TypeNameFormat_t;
 
 typedef enum {
@@ -64,6 +75,6 @@ typedef struct {
 } NDEFHeader_t;
 
 int NDEFDecodeAndPrint(uint8_t *ndef, size_t ndefLen, bool verbose);
-int NDEFRecordsDecodeAndPrint(uint8_t *ndefRecord, size_t ndefRecordLen);
+int NDEFRecordsDecodeAndPrint(uint8_t *ndefRecord, size_t ndefRecordLen, bool verbose);
 
 #endif // _NDEF_H_

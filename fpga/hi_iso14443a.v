@@ -1,29 +1,40 @@
 //-----------------------------------------------------------------------------
-// ISO14443-A support for the Proxmark III
-// Gerhard de Koning Gans, April 2008
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
+// ISO14443-A support for the Proxmark III
 
 module hi_iso14443a(
-    ck_1356meg,
-    pwr_lo, pwr_hi, pwr_oe1, pwr_oe2, pwr_oe3, pwr_oe4,
-    adc_d, adc_clk,
-    ssp_frame, ssp_din, ssp_dout, ssp_clk,
-    dbg,
-    mod_type
+    input ck_1356meg,
+    input [7:0] adc_d,
+    input [3:0] mod_type,
+    input ssp_dout,
+
+    output ssp_din,
+    output reg ssp_frame,
+    output reg ssp_clk,
+    output adc_clk,
+    output pwr_lo,
+    output pwr_hi,
+    output pwr_oe1,
+    output pwr_oe2,
+    output pwr_oe3,
+    output pwr_oe4,
+    output debug
 );
-    input ck_1356meg;
-    output pwr_lo, pwr_hi, pwr_oe1, pwr_oe2, pwr_oe3, pwr_oe4;
-    input [7:0] adc_d;
-    output adc_clk;
-    input ssp_dout;
-    output ssp_frame, ssp_din, ssp_clk;
-    output dbg;
-    input [3:0] mod_type;
 
-
-wire adc_clk = ck_1356meg;
-
-
+assign adc_clk = ck_1356meg;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Reader -> PM3:
@@ -63,8 +74,6 @@ begin
 
 end
 
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Reader -> PM3
 // detect when a reader is active (modulating). We assume that the reader is active, if we see the carrier off for at least 8
@@ -95,8 +104,6 @@ begin
     end
 end
 
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Tag -> PM3
 // filter the input for a tag's signal. The filter box needs the 4 previous input values and is a gaussian derivative filter
@@ -122,8 +129,6 @@ wire [9:0] tmp2 = adc_d_times_2 + input_prev_1;
 
 // convert intermediate signals to signed and calculate the filter output
 wire signed [10:0] adc_d_filtered = {1'b0, tmp1} - {1'b0, tmp2};
-
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // internal FPGA timing. Maximum required period is 128 carrier clock cycles for a full 8 Bit transfer to ARM. (i.e. we need a
@@ -168,7 +173,6 @@ begin
     end
 end
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Tag -> PM3:
 // determine best possible time for starting/resetting the modulation detector.
@@ -200,7 +204,6 @@ begin
     end
 end
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Tag -> PM3:
 // modulation detector. Looks for the steepest falling and rising edges within a 16 clock period. If there is both a significant
@@ -209,22 +212,38 @@ reg signed [10:0] rx_mod_falling_edge_max;
 reg signed [10:0] rx_mod_rising_edge_max;
 reg curbit;
 
-`define EDGE_DETECT_THRESHOLD   5
+`ifdef PM3ICOPYX
+`define EDGE_DETECT_THRESHOLD   3
+`else
+`define EDGE_DETECT_THRESHOLD   7
+`endif
+`define EDGE_DETECT_THRESHOLDHIGH   20
 
 always @(negedge adc_clk)
 begin
     if(negedge_cnt[3:0] == mod_detect_reset_time)
     begin
-        // detect modulation signal: if modulating, there must have been a falling AND a rising edge
-        if ((rx_mod_falling_edge_max > `EDGE_DETECT_THRESHOLD) && (rx_mod_rising_edge_max < -`EDGE_DETECT_THRESHOLD))
+        if (mod_type == `FPGA_HF_ISO14443A_SNIFFER)
+        begin
+            // detect modulation signal: if modulating, there must have been a falling AND a rising edge
+            if ((rx_mod_falling_edge_max > `EDGE_DETECT_THRESHOLDHIGH) && (rx_mod_rising_edge_max < -`EDGE_DETECT_THRESHOLDHIGH))
                 curbit <= 1'b1; // modulation
             else
                 curbit <= 1'b0; // no modulation
+        end
+        else
+        begin
+            // detect modulation signal: if modulating, there must have been a falling AND a rising edge
+            if ((rx_mod_falling_edge_max > `EDGE_DETECT_THRESHOLD) && (rx_mod_rising_edge_max < -`EDGE_DETECT_THRESHOLD))
+                curbit <= 1'b1; // modulation
+            else
+                curbit <= 1'b0; // no modulation
+        end
         // reset modulation detector
         rx_mod_rising_edge_max <= 0;
         rx_mod_falling_edge_max <= 0;
     end
-    else                                            // look for steepest edges (slopes)
+    else // look for steepest edges (slopes)
     begin
         if (adc_d_filtered > 0)
         begin
@@ -240,8 +259,6 @@ begin
 
 end
 
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Tag+Reader -> PM3
 // sample 4 bits reader data and 4 bits tag data for sniffing
@@ -256,8 +273,6 @@ begin
         tag_data[3:0] <= {tag_data[2:0], curbit};
     end
 end
-
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PM3 -> Reader:
@@ -280,8 +295,6 @@ begin
         mod_sig = mod_sig_buf[mod_sig_ptr];                 // the delayed signal.
     end
 end
-
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PM3 -> Reader, internal timing:
@@ -345,7 +358,6 @@ begin
     if(fdt_counter == `FDT_INDICATOR_COUNT) fdt_indicator <= 1'b1;
 end
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PM3 -> Reader or Tag
 // assign a modulation signal to the antenna. This signal is either a delayed signal (to achieve fdt when sending to a reader)
@@ -373,8 +385,6 @@ begin
         mod_sig_coil <= ssp_dout;
     end
 end
-
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PM3 -> Reader
@@ -417,8 +427,6 @@ begin
         end
     end
 end
-
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // FPGA -> ARM communication:
@@ -463,15 +471,11 @@ begin
             to_arm[7:1] <= to_arm[6:0];
         end
     end
-
 end
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // FPGA <-> ARM communication:
 // generate a ssp clock and ssp frame signal for the synchronous transfer from/to the ARM
-reg ssp_clk;
-reg ssp_frame;
 
 always @(negedge adc_clk)
 begin
@@ -503,8 +507,6 @@ begin
     end
 end
 
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // FPGA -> ARM communication:
 // select the data to be sent to ARM
@@ -528,7 +530,6 @@ begin
             sendbit = 1'b0;
     end
 
-
     if(mod_type == `FPGA_HF_ISO14443A_SNIFFER)
         // send sampled reader and tag data:
         bit_to_arm = to_arm[7];
@@ -550,7 +551,6 @@ assign sub_carrier = ~sub_carrier_cnt[3];
 // in FPGA_HF_ISO14443A_READER_LISTEN: carrier always on; in other modes: carrier always off
 assign pwr_hi = (ck_1356meg & (((mod_type == `FPGA_HF_ISO14443A_READER_MOD) & ~mod_sig_coil) || (mod_type == `FPGA_HF_ISO14443A_READER_LISTEN)));
 
-
 // Enable HF antenna drivers:
 assign pwr_oe1 = 1'b0;
 assign pwr_oe3 = 1'b0;
@@ -564,6 +564,6 @@ assign pwr_oe4 = mod_sig_coil & sub_carrier & (mod_type == `FPGA_HF_ISO14443A_TA
 assign pwr_oe2 = 1'b0;
 assign pwr_lo = 1'b0;
 
-assign dbg = negedge_cnt[3];
+assign debug = negedge_cnt[3];
 
 endmodule

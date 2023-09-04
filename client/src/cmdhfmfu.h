@@ -1,9 +1,31 @@
+//-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
+// High frequency MIFARE ULTRALIGHT (C) commands
+//-----------------------------------------------------------------------------
 #ifndef CMDHFMFU_H__
 #define CMDHFMFU_H__
 
 #include "common.h"
 
 #include "mifare.h" // structs
+
+
+#define MFU_BLOCK_SIZE      0x04
+#define MFU_MAX_BLOCKS      0xFF
+#define MFU_MAX_BYTES       (MFU_MAX_BLOCKS * MFU_BLOCK_SIZE)
 
 // Old Ultralight/NTAG dump file format
 // It is used only for converting
@@ -24,9 +46,11 @@ uint32_t GetHF14AMfU_Type(void);
 int ul_print_type(uint32_t tagtype, uint8_t spaces);
 void printMFUdumpEx(mfu_dump_t *card, uint16_t pages, uint8_t startpage);
 int ul_read_uid(uint8_t *uid);
+int trace_mfuc_try_default_3des_keys(uint8_t **correct_key, int state, uint8_t (*authdata)[16]);
 
 int CmdHFMFUltra(const char *Cmd);
 int CmdHF14MfuNDEFRead(const char *Cmd);
+int CmdHF14MfUTamper(const char *Cmd);
 
 uint16_t ul_ev1_packgen_VCNEW(uint8_t *uid, uint32_t pwd);
 uint32_t ul_ev1_otpgenA(uint8_t *uid);
@@ -67,6 +91,7 @@ typedef enum TAGTYPE_UL {
     NTAG_210u        = 0x80000000,
     UL_MAGIC         = UL | MAGIC,
     UL_C_MAGIC       = UL_C | MAGIC,
+    // Don't forget to fill UL_TYPES_ARRAY and UL_MEMORY_ARRAY if new types are added
     UL_ERROR         = 0xFFFFFF,
 } TagTypeUL_t;
 

@@ -1,16 +1,22 @@
 //-----------------------------------------------------------------------------
-// Copyright 2021 Tim Mudford <tim.mudford1@gmail.com>
+// Copyright (C) 2021 Tim Mudford <tim.mudford1@gmail.com>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // main code for hf_tmudford
-//-----------------------------------------------------------------------------
-//
-//
 // `hf_tmudford` Continuously scans for ISO15693 card UID and then emulates it.
-//
+//-----------------------------------------------------------------------------
 
 #include "standalone.h"
 #include "proxmark3_arm.h"
@@ -55,7 +61,7 @@ void RunMod(void) {
                 break;
             else if (state == STATE_READ) {
                 Iso15693InitReader();
-                ReaderIso15693(0, &card);
+                ReaderIso15693(&card);
 
                 if (card.uidlen == 0) {
                     LED_D_OFF();
@@ -69,7 +75,8 @@ void RunMod(void) {
             } else if (state == STATE_EMUL) {
                 Iso15693InitTag();
                 Dbprintf("Starting simulation, press pm3-button to stop and go back to search state.");
-                SimTagIso15693(card.uid);
+                // default block size is 4
+                SimTagIso15693(card.uid, 4);
 
                 state = STATE_READ;
             }

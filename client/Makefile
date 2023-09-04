@@ -1,10 +1,31 @@
 #-----------------------------------------------------------------------------
-# This code is licensed to you under the terms of the GNU GPL, version 2 or,
-# at your option, any later version. See the LICENSE.txt file for the text of
-# the license.
+# Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# See LICENSE.txt for the text of the license.
 #-----------------------------------------------------------------------------
 
+ifeq ($(PLTNAME),)
+    -include ../Makefile.platform
+    -include ../.Makefile.options.cache
+    ifneq ($(PLATFORM), $(CACHED_PLATFORM))
+        $(error platform definitions have been changed, please "make clean" at the root of the project)
+    endif
+endif
 include ../Makefile.defs
+
+ifeq ($(PLATFORM),PM3ICOPYX)
+  INCLUDES += -DICOPYX
+endif
 
 INSTALLBIN = proxmark3
 INSTALLSHARE = cmdscripts lualibs luascripts pyscripts resources dictionaries
@@ -14,19 +35,19 @@ vpath %.dic dictionaries
 OBJDIR = obj
 
 ifeq ($(USE_BREW),1)
-	ifdef MACPORTS_PREFIX
-		INCLUDES += -I$(MACPORTS_PREFIX)/include
-		LDLIBS += -L$(MACPORTS_PREFIX)/lib
-		PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(MACPORTS_PREFIX)/lib/pkgconfig
-		PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(MACPORTS_PREFIX)/libexec/qt/lib/pkgconfig
-		PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(MACPORTS_PREFIX)/libexec/qt5/lib/pkgconfig
-	else
-		INCLUDES += -I$(BREW_PREFIX)/include
-		LDLIBS += -L$(BREW_PREFIX)/lib
-		PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(BREW_PREFIX)/opt/qt/lib/pkgconfig
-		PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(BREW_PREFIX)/opt/qt5/lib/pkgconfig
-	endif
+	INCLUDES += -I$(BREW_PREFIX)/include
+	LDLIBS += -L$(BREW_PREFIX)/lib
+	PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(BREW_PREFIX)/lib/pkgconfig:$(BREW_PREFIX)/opt/qt/lib/pkgconfig:$(BREW_PREFIX)/opt/qt5/lib/pkgconfig
 endif
+
+ifeq ($(USE_MACPORTS),1)
+	INCLUDES += -I$(MACPORTS_PREFIX)/include
+	LDLIBS += -L$(MACPORTS_PREFIX)/lib
+	PKG_CONFIG_ENV := PKG_CONFIG_PATH=$(MACPORTS_PREFIX)/lib/pkgconfig
+endif
+
+
+PM3INCLUDES =
 
 ###################
 # local libraries #
@@ -56,6 +77,14 @@ JANSSONLIBINC = -I$(JANSSONLIBPATH)
 JANSSONLIB = $(JANSSONLIBPATH)/libjansson.a
 JANSSONLIBLD =
 
+## Linenoise
+# Can be used if Readline is unavailable or explicitely disabled
+# Requires to be unpacked, see deps/get_linenoise.sh
+LINENOISELIBPATH = ./deps/linenoise
+LINENOISELIBINC = -I$(LINENOISELIBPATH)
+LINENOISELIB = $(LINENOISELIBPATH)/liblinenoise.a
+LINENOISELIBLD =
+
 ## Lua
 LUALIBPATH = ./deps/liblua
 LUALIBINC = -I$(LUALIBPATH)
@@ -71,6 +100,11 @@ else
         LUALIBLD +=  -ldl
         LUAPLATFORM = linux
     endif
+endif
+
+## Winsock2
+ifneq (,$(findstring MINGW,$(platform)))
+	LDLIBS += -lws2_32
 endif
 
 ## Reveng
@@ -109,19 +143,22 @@ MBEDTLSLIBCLIENTRELPATH = ../../client
 # not distributed as system library
 STATICLIBS += $(AMIIBOLIB)
 LDLIBS += $(AMIIBOLIBLD)
-INCLUDES += $(AMIIBOLIBINC)
+PM3INCLUDES += $(AMIIBOLIBINC)
 
 ## Cliparser / Argtable3
 # not distributed as system library
 STATICLIBS += $(CLIPARSERLIB)
 LDLIBS += $(CLIPARSERLIBLD)
-INCLUDES += $(CLIPARSERLIBINC)
+PM3INCLUDES += $(CLIPARSERLIBINC)
 
 ## Hardnested
 # not distributed as system library
 STATICLIBS += $(HARDNESTEDLIB)
 LDLIBS +=$(HARDNESTEDLIBLD)
-INCLUDES += $(HARDNESTEDLIBINC)
+PM3INCLUDES += $(HARDNESTEDLIBINC)
+
+## Linenoise
+# wait to see if Readline is available
 
 ## Lua
 ifneq ($(SKIPLUASYSTEM),1)
@@ -141,7 +178,7 @@ ifneq ($(SKIPLUASYSTEM),1)
 endif
 STATICLIBS += $(LUALIB)
 LDLIBS += $(LUALIBLD)
-INCLUDES += $(LUALIBINC)
+PM3INCLUDES += $(LUALIBINC)
 
 ## Jansson
 # Jansson section needs to be after Lua to avoid interferences on macOS if a locally incompatible Lua was available, see PR 1155
@@ -157,25 +194,25 @@ ifneq ($(SKIPJANSSONSYSTEM),1)
 endif
 STATICLIBS += $(JANSSONLIB)
 LDLIBS += $(JANSSONLIBLD)
-INCLUDES += $(JANSSONLIBINC)
+PM3INCLUDES += $(JANSSONLIBINC)
 
 ## mbed TLS
 # system library cannot be used because it is compiled by default without CMAC support
 STATICLIBS += $(MBEDTLSLIB)
 LDLIBS += $(MBEDTLSLIBLD)
-INCLUDES += $(MBEDTLSLIBINC)
+PM3INCLUDES += $(MBEDTLSLIBINC)
 
 ## Reveng
 # not distributed as system library
 STATICLIBS += $(REVENGLIB)
 LDLIBS += $(REVENGLIBLD)
-INCLUDES += $(REVENGLIBINC)
+PM3INCLUDES += $(REVENGLIBINC)
 
 ## Tinycbor
 # not distributed as system library
 STATICLIBS += $(TINYCBORLIB)
 LDLIBS += $(TINYCBORLIBLD)
-INCLUDES += $(TINYCBORLIBINC)
+PM3INCLUDES += $(TINYCBORLIBINC)
 
 ## Whereami
 ifneq ($(SKIPWHEREAMISYSTEM),1)
@@ -188,7 +225,7 @@ ifneq ($(SKIPWHEREAMISYSTEM),1)
 endif
 STATICLIBS += $(WHEREAMILIB)
 LDLIBS += $(WHEREAMILIBLD)
-INCLUDES += $(WHEREAMILIBINC)
+PM3INCLUDES += $(WHEREAMILIBINC)
 
 ####################
 # system libraries #
@@ -205,6 +242,9 @@ endif
 ## BZIP2
 LDLIBS += -lbz2
 
+## LZ4
+LDLIBS += -llz4
+
 ## Bluez (optional)
 ifneq ($(SKIPBT),1)
     BTINCLUDES = $(shell $(PKG_CONFIG_ENV) pkg-config --cflags bluez 2>/dev/null)
@@ -216,7 +256,7 @@ ifneq ($(SKIPBT),1)
     endif
 endif
 LDLIBS += $(BTLIBLD)
-INCLUDES += $(BTLIBINC)
+PM3INCLUDES += $(BTLIBINC)
 
 ## Math
 LDLIBS += -lm
@@ -247,7 +287,7 @@ ifneq ($(SKIPPYTHON),1)
     endif
 endif
 LDLIBS += $(PYTHONLIBLD)
-INCLUDES += $(PYTHONLIBINC)
+PM3INCLUDES += $(PYTHONLIBINC)
 
 ## QT5 (or QT4 fallback) (optional)
 ifneq ($(SKIPQT),1)
@@ -256,6 +296,7 @@ ifneq ($(SKIPQT),1)
     QTLDLIBS = $(shell $(PKG_CONFIG_ENV) pkg-config --libs Qt5Core Qt5Widgets 2>/dev/null)
     MOC = $(shell $(PKG_CONFIG_ENV) pkg-config --variable=host_bins Qt5Core)/moc
     UIC = $(shell $(PKG_CONFIG_ENV) pkg-config --variable=host_bins Qt5Core)/uic
+    QMAKE = $(shell $(PKG_CONFIG_ENV) pkg-config --variable=host_bins Qt5Core)/qmake
     ifneq ($(QTLDLIBS),)
         QT5_FOUND = 1
     else
@@ -264,6 +305,7 @@ ifneq ($(SKIPQT),1)
         QTLDLIBS = $(shell $(PKG_CONFIG_ENV) pkg-config --libs QtCore QtGui 2>/dev/null)
         MOC = $(shell $(PKG_CONFIG_ENV) pkg-config --variable=moc_location QtCore)
         UIC = $(shell $(PKG_CONFIG_ENV) pkg-config --variable=uic_location QtCore)
+        QMAKE = $(shell $(PKG_CONFIG_ENV) pkg-config --variable=exec_prefix QtCore)/bin/qmake
     endif
     ifeq ($(QTLDLIBS),)
         # if both pkg-config commands failed, search in common places
@@ -280,6 +322,7 @@ ifneq ($(SKIPQT),1)
             endif
             MOC = $(QTDIR)/bin/moc
             UIC = $(QTDIR)/bin/uic
+            QMAKE = $(QTDIR)/bin/qmake
         endif
     endif
     ifneq ($(QTLDLIBS),)
@@ -292,15 +335,26 @@ CXXINCLUDES += $(QTINCLUDES)
 ## Readline
 ifneq ($(SKIPREADLINE),1)
     ifeq ($(USE_BREW),1)
-        ifdef MACPORTS_PREFIX
-            INCLUDES += -I$(MACPORTS_PREFIX)/include/readline
-        else
-            LDLIBS += -L$(BREW_PREFIX)/opt/readline/lib
-            INCLUDES += -I$(BREW_PREFIX)/opt/readline/include
-        endif
+        LDLIBS += -L$(BREW_PREFIX)/opt/readline/lib
+        PM3INCLUDES += -I$(BREW_PREFIX)/opt/readline/include
     endif
+
+    ifeq ($(USE_MACPORTS),1)
+        PM3INCLUDES += -I$(MACPORTS_PREFIX)/include/readline
+    endif
+
     LDLIBS += -lreadline
     READLINE_FOUND = 1
+else
+## Linenoise
+    ifneq ($(SKIPLINENOISE),1)
+        ifneq (,$(wildcard $(LINENOISELIBPATH)))
+            STATICLIBS += $(LINENOISELIB)
+            LDLIBS += $(LINENOISELIBLD)
+            PM3INCLUDES += $(LINENOISELIBINC)
+            LINENOISE_LOCAL_FOUND = 1
+		endif
+    endif
 endif
 
 ########
@@ -318,9 +372,11 @@ endif
 
 #######################################################################################################
 CFLAGS ?= $(DEFCFLAGS)
+CFLAGS += $(MYDEFS) $(MYCFLAGS) $(MYINCLUDES)
+
 # We cannot just use CFLAGS+=... because it has impact on sub-makes if CFLAGS is defined in env:
 PM3CFLAGS = $(CFLAGS)
-PM3CFLAGS += -I./src -I./include -I../include -I../common -I../common_fpga $(INCLUDES)
+PM3CFLAGS += -g -I./src -I./include -I../include -I../common -I../common_fpga $(PM3INCLUDES) $(INCLUDES)
 # WIP Testing
 #PM3CFLAGS += -std=c11 -pedantic
 
@@ -338,6 +394,10 @@ ifeq ($(READLINE_FOUND),1)
     PM3CFLAGS += -DHAVE_READLINE
 endif
 
+ifeq ($(LINENOISE_LOCAL_FOUND),1)
+    PM3CFLAGS += -DHAVE_LINENOISE
+endif
+
 ifeq ($(BT_FOUND),1)
     PM3CFLAGS += -DHAVE_BLUEZ
 endif
@@ -353,7 +413,11 @@ ifeq ($(SWIG_PYTHON_FOUND),1)
     PM3CFLAGS += -DHAVE_PYTHON_SWIG
 endif
 
+PM3CFLAGS += -DHAVE_SNPRINTF
+
 CXXFLAGS ?= -Wall -Werror -O3
+CXXFLAGS += $(MYDEFS) $(MYCXXFLAGS) $(MYINCLUDES)
+
 PM3CXXFLAGS = $(CXXFLAGS)
 PM3CXXFLAGS += -I../include -I./include
 
@@ -366,10 +430,20 @@ ifeq ($(QT_FOUND),1)
     endif
 endif
 
+PM3CXXFLAGS += -DHAVE_SNPRINTF
+
 LDFLAGS ?= $(DEFLDFLAGS)
+LDFLAGS += $(MYLDFLAGS)
+
 PM3LDFLAGS = $(LDFLAGS)
 ifeq ($(platform),Darwin)
-    PM3LDFLAGS += -framework Foundation -framework AppKit
+    ifeq ($(shell uname -p),arm64)
+        # The platform is iOS
+        PM3LDFLAGS += -framework Foundation -framework UIKit
+    else
+        # M* macOS devices return arm
+        PM3LDFLAGS += -framework Foundation -framework AppKit
+    endif
 endif
 
 ###################
@@ -377,6 +451,7 @@ endif
 ###################
 
 $(info ===================================================================)
+$(info Version info:      $(shell ../tools/mkversion.sh --short 2>/dev/null))
 $(info Client platform:   $(platform))
 
 ifeq ($(SKIPQT),1)
@@ -384,9 +459,9 @@ ifeq ($(SKIPQT),1)
 else
     ifeq ($(QT_FOUND),1)
         ifeq ($(QT5_FOUND),1)
-            $(info GUI support:       QT5 found, enabled ($(shell QT_SELECT=5 qmake -v 2>/dev/null|grep -o 'Qt version.*')))
+            $(info GUI support:       QT5 found, enabled ($(shell QT_SELECT=5 $(QMAKE) -v 2>/dev/null|grep -o 'Qt version.*')))
         else
-            $(info GUI support:       QT4 found, enabled ($(shell QT_SELECT=4 qmake -v 2>/dev/null|grep -o 'Qt version.*')))
+            $(info GUI support:       QT4 found, enabled ($(shell QT_SELECT=4 $(QMAKE) -v 2>/dev/null|grep -o 'Qt version.*')))
         endif
     else
         $(info GUI support:       QT not found, disabled)
@@ -425,7 +500,7 @@ ifeq ($(SKIPPYTHON),1)
         $(info Python3 library:   skipped)
 else
     ifeq ($(PYTHON_FOUND),1)
-        $(info Python3 library:   Python3 v$(shell pkg-config --modversion python3) found, enabled)
+        $(info Python3 library:   Python3 v$(shell $(PKG_CONFIG_ENV) pkg-config --modversion python3) found, enabled)
     else
         $(info Python3 library:   Python3 not found, disabled)
     endif
@@ -438,6 +513,18 @@ else
         $(info Readline library:  enabled)
     else
         $(info Readline library:  Readline not found, disabled)
+    endif
+endif
+
+ifneq ($(READLINE_FOUND),1)
+    ifeq ($(SKIPLINENOISE),1)
+        $(info Linenoise library: skipped)
+    else
+        ifeq ($(LINENOISE_LOCAL_FOUND),1)
+            $(info Linenoise library: enabled)
+        else
+            $(info Linenoise library: Linenoise not found, disabled)
+        endif
     endif
 endif
 
@@ -474,8 +561,9 @@ POSTCOMPILE = $(MV) -f $(OBJDIR)/$*.Td $(OBJDIR)/$*.d && $(TOUCH) $@
 # enumerations #
 ################
 
-SRCS =  aiddesfire.c \
+SRCS =  mifare/aiddesfire.c \
 		aidsearch.c \
+		atrs.c \
 		cmdanalyse.c \
 		cmdcrc.c \
 		cmddata.c \
@@ -490,6 +578,9 @@ SRCS =  aiddesfire.c \
 		cmdhfemrtd.c \
 		cmdhffelica.c \
 		cmdhffido.c \
+		cmdhffudan.c \
+		cmdhfgallagher.c \
+		cmdhfksx6924.c \
 		cmdhfcipurse.c \
 		cmdhficlass.c \
 		cmdhflegic.c \
@@ -501,12 +592,17 @@ SRCS =  aiddesfire.c \
 		cmdhfmfhard.c \
 		cmdhfmfu.c \
 		cmdhfmfp.c \
+		cmdhfntag424.c \
 		cmdhfseos.c \
 		cmdhfst.c \
 		cmdhfst25ta.c \
+		cmdhftesla.c \
 		cmdhfthinfilm.c \
 		cmdhftopaz.c \
+		cmdhftexkom.c \
+		cmdhfvas.c \
 		cmdhfwaveshare.c \
+		cmdhfxerox.c \
 		cmdhw.c \
 		cmdlf.c \
 		cmdlfawid.c \
@@ -541,9 +637,11 @@ SRCS =  aiddesfire.c \
 		cmdlfti.c \
 		cmdlfviking.c \
 		cmdlfvisa2000.c \
+		cmdlfzx8211.c \
 		cmdmain.c \
 		cmdnfc.c \
 		cmdparser.c \
+		cmdpiv.c \
 		cmdscript.c \
 		cmdsmartcard.c \
 		cmdtrace.c \
@@ -574,6 +672,7 @@ SRCS =  aiddesfire.c \
 		fido/cose.c \
 		fido/cbortools.c \
 		fido/fidocore.c \
+		ksx6924/ksx6924core.c \
 		cipurse/cipursecore.c \
 		cipurse/cipursecrypto.c \
 		cipurse/cipursetest.c \
@@ -582,17 +681,19 @@ SRCS =  aiddesfire.c \
 		generator.c \
 		graph.c \
 		jansson_path.c \
+		iso4217.c \
 		iso7816/apduinfo.c \
 		iso7816/iso7816core.c \
 		loclass/cipher.c \
 		loclass/cipherutils.c \
 		loclass/elite_crack.c \
 		loclass/ikeys.c \
-		mifare/desfire_crypto.c \
+		mifare/lrpcrypto.c \
 		mifare/desfirecrypto.c \
 		mifare/desfirecore.c \
         mifare/desfiresecurechan.c \
         mifare/desfiretest.c \
+		mifare/gallaghercore.c \
 		mifare/mad.c \
 		mifare/mfkey.c \
 		mifare/mifare4.c \
@@ -603,13 +704,12 @@ SRCS =  aiddesfire.c \
 		pm3_binlib.c \
 		pm3_bitlib.c \
 		preferences.c \
-		prng.c \
+		pm3line.c \
 		proxmark3.c \
 		scandir.c \
 		uart/uart_posix.c \
 		uart/uart_win32.c \
 		scripting.c \
-		tea.c \
 		ui.c \
 		util.c \
 		version_pm3.c \
@@ -629,7 +729,6 @@ SRCS += bucketsort.c \
 		iso15693tools.c \
 		legic_prng.c \
 		lfdemod.c \
-		parity.c \
 		util_posix.c
 
 # swig
@@ -676,14 +775,19 @@ all-static: LDLIBS:=-static $(LDLIBS)
 all-static: $(BINS)
 
 proxmark3: $(OBJS) $(STATICLIBS) lualibs/pm3_cmd.lua lualibs/mfc_default_keys.lua
-	$(info [=] LD $@)
-	$(Q)$(LD) $(PM3LDFLAGS) $(OBJS) $(STATICLIBS) $(LDLIBS) -o $@
+	$(info [=] CXX $@)
+#	$(Q)$(CXX) $(PM3LDFLAGS) $(OBJS) $(STATICLIBS) $(LDLIBS) -o $@
+	$(Q)$(CXX) $(PM3CFLAGS) $(PM3LDFLAGS) $(OBJS) $(STATICLIBS) $(LDLIBS) -o $@
 
 src/proxgui.cpp: src/ui/ui_overlays.h src/ui/ui_image.h
+
+src/proxguiqt.cpp: src/proxguiqt.h
 
 src/proxguiqt.moc.cpp: src/proxguiqt.h
 	$(info [-] MOC $@)
 	$(Q)$(MOC) -o$@ $^
+
+src/proxguiqt.h: src/ui/ui_overlays.h src/ui/ui_image.h
 
 src/ui/ui_overlays.h: src/ui/overlays.ui
 	$(info [-] UIC $@)
@@ -708,6 +812,9 @@ clean:
 	$(Q)$(MAKE) --no-print-directory -C $(CLIPARSERLIBPATH) clean
 	$(Q)$(MAKE) --no-print-directory -C $(HARDNESTEDLIBPATH) clean
 	$(Q)$(MAKE) --no-print-directory -C $(JANSSONLIBPATH) clean
+ifeq ($(LINENOISE_LOCAL_FOUND), 1)
+	$(Q)$(MAKE) --no-print-directory -C $(LINENOISELIBPATH) clean
+endif
 	$(Q)$(MAKE) --no-print-directory -C $(LUALIBPATH) clean
 	$(Q)$(MAKE) --no-print-directory -C $(REVENGLIBPATH) clean
 	$(Q)$(MAKE) --no-print-directory -C $(TINYCBORLIBPATH) clean
@@ -718,23 +825,23 @@ clean:
 install: all
 	$(info [@] Installing client to $(DESTDIR)$(PREFIX)...)
 ifneq (,$(INSTALLBIN))
-	    $(Q)$(MKDIR) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLBINRELPATH)
-	    $(Q)$(CP) $(INSTALLBIN) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLBINRELPATH)
+	    $(Q)$(INSTALLSUDO) $(MKDIR) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLBINRELPATH)
+	    $(Q)$(INSTALLSUDO) $(CP) $(INSTALLBIN) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLBINRELPATH)
 endif
 ifneq (,$(INSTALLSHARE))
-	    $(Q)$(MKDIR) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)
-	    $(Q)$(CP) $(INSTALLSHARE) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)
-	    $(Q)$(CP) src/pm3.py $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)/pyscripts
+	    $(Q)$(INSTALLSUDO) $(MKDIR) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)
+	    $(Q)$(INSTALLSUDO) $(CP) $(INSTALLSHARE) $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)
+	    $(Q)$(INSTALLSUDO) $(CP) src/pm3.py $(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)/pyscripts
 endif
 	@true
 
 uninstall:
 	$(info [@] Uninstalling client from $(DESTDIR)$(PREFIX)...)
 ifneq (,$(INSTALLBIN))
-	    $(Q)$(RM) $(foreach tool,$(INSTALLBIN),$(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLBINRELPATH)$(PATHSEP)$(notdir $(tool)))
+	    $(Q)$(INSTALLSUDO) $(RM) $(foreach tool,$(INSTALLBIN),$(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLBINRELPATH)$(PATHSEP)$(notdir $(tool)))
 endif
 ifneq (,$(INSTALLSHARE))
-	    $(Q)$(RMDIR) $(foreach tool,$(INSTALLSHARE),$(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)$(PATHSEP)$(notdir $(tool)))
+	    $(Q)$(INSTALLSUDO) $(RMDIR) $(foreach tool,$(INSTALLSHARE),$(DESTDIR)$(PREFIX)$(PATHSEP)$(INSTALLSHARERELPATH)$(PATHSEP)$(notdir $(tool)))
 endif
 	@true
 
@@ -763,6 +870,12 @@ ifneq ($(JANSSON_FOUND),1)
 	$(Q)$(MAKE) --no-print-directory -C $(JANSSONLIBPATH) all
 endif
 
+$(LINENOISELIB): .FORCE
+ifeq ($(LINENOISE_LOCAL_FOUND), 1)
+	$(info [*] MAKE $@)
+	$(Q)$(MAKE) --no-print-directory -C $(LINENOISELIBPATH) all
+endif
+
 $(LUALIB): .FORCE
 ifneq ($(LUA_FOUND),1)
 	$(info [*] MAKE $@ for $(LUAPLATFORM))
@@ -771,7 +884,7 @@ endif
 
 $(MBEDTLSLIB): .FORCE
 	$(info [*] MAKE $@)
-	$(Q)$(MAKE) --no-print-directory -C $(MBEDTLSLIBPATH) OBJDIR=$(MBEDTLSLIBCLIENTRELPATH)/$(OBJDIR) BINDIR=$(MBEDTLSLIBCLIENTRELPATH)/$(OBJDIR) all
+	$(Q)$(MAKE) --no-print-directory -C $(MBEDTLSLIBPATH) OBJDIR=$(MBEDTLSLIBCLIENTRELPATH)/$(OBJDIR)/mbedtls BINDIR=$(MBEDTLSLIBCLIENTRELPATH)/$(OBJDIR) all
 
 $(REVENGLIB): .FORCE
 	$(info [*] MAKE $@)
@@ -805,10 +918,10 @@ src/pm3_pywrap.c: pm3.i
 
 .PHONY: all clean install uninstall tarbin .FORCE
 
-# version_pm3.c should be remade on every compilation
-src/version_pm3.c: default_version_pm3.c
-	$(info [=] GEN $@)
-	$(Q)$(SH) ../tools/mkversion.sh > $@ || $(PERL) ../tools/mkversion.pl > $@ || $(CP) $< $@
+# version_pm3.c should be checked on every compilation
+src/version_pm3.c: default_version_pm3.c .FORCE
+	$(info [=] CHECK $@)
+	$(Q)$(SH) ../tools/mkversion.sh $@ || $(CP) $< $@
 
 # easy printing of MAKE VARIABLES
 print-%: ; @echo $* = $($*)

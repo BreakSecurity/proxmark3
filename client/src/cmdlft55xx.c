@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency T55xx commands
 //-----------------------------------------------------------------------------
@@ -45,7 +54,7 @@
 //static uint8_t bit_rates[9] = {8, 16, 32, 40, 50, 64, 100, 128, 0};
 
 // Default configuration
-t55xx_conf_block_t config = {
+static t55xx_conf_block_t config = {
     .modulation = DEMOD_ASK,
     .inverted = false,
     .offset = 0x00,
@@ -69,16 +78,18 @@ void Set_t55xx_Config(t55xx_conf_block_t conf) {
 static int CmdHelp(const char *Cmd);
 
 static void arg_add_t55xx_downloadlink(void *at[], uint8_t *idx, uint8_t show, uint8_t dl_mode_def) {
+    const size_t r_count = 56;
+    const size_t r_len = r_count * sizeof(uint8_t);
 
-    char *r0 = (char *)calloc(56, sizeof(uint8_t));
-    char *r1 = (char *)calloc(56, sizeof(uint8_t));
-    char *r2 = (char *)calloc(56, sizeof(uint8_t));
-    char *r3 = (char *)calloc(56, sizeof(uint8_t));
+    char *r0 = (char *)calloc(r_count, sizeof(uint8_t));
+    char *r1 = (char *)calloc(r_count, sizeof(uint8_t));
+    char *r2 = (char *)calloc(r_count, sizeof(uint8_t));
+    char *r3 = (char *)calloc(r_count, sizeof(uint8_t));
 
-    sprintf(r0, "downlink - fixed bit length %s", (dl_mode_def == 0) ? "(detected def)" : "");
-    sprintf(r1, "downlink - long leading reference %s", (dl_mode_def == 1) ? "(detected def)" : "");
-    sprintf(r2, "downlink - leading zero %s", (dl_mode_def == 2) ? "(detected def)" : "");
-    sprintf(r3, "downlink - 1 of 4 coding reference %s", (dl_mode_def == 3) ? "(detected def)" : "");
+    snprintf(r0, r_len, "downlink - fixed bit length %s", (dl_mode_def == 0) ? "(detected def)" : "");
+    snprintf(r1, r_len, "downlink - long leading reference %s", (dl_mode_def == 1) ? "(detected def)" : "");
+    snprintf(r2, r_len, "downlink - leading zero %s", (dl_mode_def == 2) ? "(detected def)" : "");
+    snprintf(r3, r_len, "downlink - 1 of 4 coding reference %s", (dl_mode_def == 3) ? "(detected def)" : "");
 
     uint8_t n = *idx;
     at[n++] = arg_lit0(NULL, "r0", r0);
@@ -87,8 +98,8 @@ static void arg_add_t55xx_downloadlink(void *at[], uint8_t *idx, uint8_t show, u
     at[n++] = arg_lit0(NULL, "r3", r3);
 
     if (show == T55XX_DLMODE_ALL) {
-        char *r4 = (char *)calloc(56, sizeof(uint8_t));
-        sprintf(r4, "try all downlink modes %s", (dl_mode_def == 4) ? "(def)" : "");
+        char *r4 = (char *)calloc(r_count, sizeof(uint8_t));
+        snprintf(r4, r_len, "try all downlink modes %s", (dl_mode_def == 4) ? "(def)" : "");
         at[n++] = arg_lit0(NULL, "all", r4);
     }
     at[n++] = arg_param_end;
@@ -113,11 +124,14 @@ static int CmdT55xxCloneHelp(const char *Cmd) {
     PrintAndLogEx(NORMAL, _GREEN_("lf em 410x clone"));
 // todo:  implement restore
 //    PrintAndLogEx(NORMAL, _GREEN_("lf em 4x05 write"));
-//    PrintAndLogEx(NORMAL, _GREEN_("lf em 4x50 write"));
+//    PrintAndLogEx(NORMAL, _GREEN_("lf em 4x50 restore"));
     PrintAndLogEx(NORMAL, _GREEN_("lf fdxb clone"));
     PrintAndLogEx(NORMAL, _GREEN_("lf gallagher clone"));
     PrintAndLogEx(NORMAL, _GREEN_("lf gproxii clone"));
     PrintAndLogEx(NORMAL, _GREEN_("lf hid clone"));
+// todo:  implement restore
+//    PrintAndLogEx(NORMAL, _GREEN_("lf hitag clone"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf idteck clone"));
     PrintAndLogEx(NORMAL, _GREEN_("lf indala clone"));
     PrintAndLogEx(NORMAL, _GREEN_("lf io clone"));
     PrintAndLogEx(NORMAL, _GREEN_("lf jablotron clone"));
@@ -159,13 +173,13 @@ int clone_t55xx_tag(uint32_t *blockdata, uint8_t numblocks) {
     PacketResponseNG resp;
 
     // fast push mode
-    conn.block_after_ACK = true;
+    g_conn.block_after_ACK = true;
 
     for (int8_t i = 0; i < numblocks; i++) {
 
         // Disable fast mode on last packet
         if (i == numblocks - 1) {
-            conn.block_after_ACK = false;
+            g_conn.block_after_ACK = false;
         }
 
         clearCommandBuffer();
@@ -188,7 +202,7 @@ int clone_t55xx_tag(uint32_t *blockdata, uint8_t numblocks) {
 
         if (i == 0) {
             SetConfigWithBlock0(blockdata[0]);
-            if (t55xxAquireAndCompareBlock0(false, 0, blockdata[0], false))
+            if (t55xxAcquireAndCompareBlock0(false, 0, blockdata[0], false))
                 continue;
         }
 
@@ -273,7 +287,7 @@ static bool t55xxProtect(bool lock, bool usepwd, uint8_t override, uint32_t pass
     }
 }
 
-bool t55xxAquireAndCompareBlock0(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose) {
+bool t55xxAcquireAndCompareBlock0(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose) {
 
     if (verbose)
         PrintAndLogEx(INFO, "Block0 write detected, running `detect` to see if validation is possible");
@@ -287,8 +301,8 @@ bool t55xxAquireAndCompareBlock0(bool usepwd, uint32_t password, uint32_t known_
             continue;
         }
 
-        for (uint16_t i = 0; i < DemodBufferLen - 32; i++) {
-            uint32_t tmp = PackBits(i, 32, DemodBuffer);
+        for (size_t i = 0; i < g_DemodBufferLen - 32; i++) {
+            uint32_t tmp = PackBits(i, 32, g_DemodBuffer);
             if (tmp == known_block0) {
                 config.offset = i;
                 config.downlink_mode = m;
@@ -299,7 +313,7 @@ bool t55xxAquireAndCompareBlock0(bool usepwd, uint32_t password, uint32_t known_
     return false;
 }
 
-bool t55xxAquireAndDetect(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose) {
+bool t55xxAcquireAndDetect(bool usepwd, uint32_t password, uint32_t known_block0, bool verbose) {
 
     if (verbose)
         PrintAndLogEx(INFO, "Block0 write detected, running `detect` to see if validation is possible");
@@ -334,11 +348,11 @@ bool t55xxVerifyWrite(uint8_t block, bool page1, bool usepwd, uint8_t override, 
 
     } else if (res == PM3_EWRONGANSWER) {
 
-        // could't decode.  Lets see if this was a block 0 write and try read/detect it auto.
-        // this messes up with ppls config..
+        // couldn't decode.  Lets see if this was a block 0 write and try read/detect it auto.
+        // this messes up with ppl config..
         if (block == 0 && page1 == false) {
 
-            if (t55xxAquireAndDetect(usepwd, password, data, true) == false)
+            if (t55xxAcquireAndDetect(usepwd, password, data, true) == false)
                 return false;
 
             return t55xxVerifyWrite(block, page1, usepwd, 2, password, config.downlink_mode, data);
@@ -383,7 +397,8 @@ int t55xxWrite(uint8_t block, bool page1, bool usepwd, bool testMode, uint32_t p
 }
 
 void printT5xxHeader(uint8_t page) {
-    PrintAndLogEx(SUCCESS, "Reading Page %d:", page);
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(SUCCESS, "Page " _YELLOW_("%d"), page);
     PrintAndLogEx(SUCCESS, "blk | hex data | binary                           | ascii");
     PrintAndLogEx(SUCCESS, "----+----------+----------------------------------+-------");
 }
@@ -474,7 +489,7 @@ static int CmdT55xxSetConfig(const char *Cmd) {
     }
 
     // Not these flags are used to Toggle the values.
-    // If not flag then dont set or reset, leave as is since the call may just be be setting a different value.
+    // If not flag then don't set or reset, leave as is since the call may just be be setting a different value.
     bool invert = arg_get_lit(ctx, idx++);
     bool use_q5 = arg_get_lit(ctx, idx++);
     bool use_st = arg_get_lit(ctx, idx++);
@@ -727,7 +742,7 @@ bool DecodeT55xxBlock(void) {
     int ans = 0;
     bool ST = config.ST;
     uint8_t bitRate[8] = {8, 16, 32, 40, 50, 64, 100, 128};
-    DemodBufferLen = 0x00;
+    g_DemodBufferLen = 0x00;
 
     switch (config.modulation) {
         case DEMOD_FSK:
@@ -750,7 +765,7 @@ bool DecodeT55xxBlock(void) {
         case DEMOD_PSK2: //inverted won't affect this
         case DEMOD_PSK3: //not fully implemented
             ans = PSKDemod(bitRate[config.bitrate], 0, 6, false);
-            psk1TOpsk2(DemodBuffer, DemodBufferLen);
+            psk1TOpsk2(g_DemodBuffer, g_DemodBufferLen);
             break;
         case DEMOD_NRZ:
             ans = NRZrawDemod(bitRate[config.bitrate], config.inverted, 1, false);
@@ -766,7 +781,7 @@ bool DecodeT55xxBlock(void) {
 }
 
 static bool DecodeT5555TraceBlock(void) {
-    DemodBufferLen = 0x00;
+    g_DemodBufferLen = 0x00;
 
     // According to datasheet. Always: RF/64, not inverted, Manchester
     bool st = false;
@@ -775,7 +790,7 @@ static bool DecodeT5555TraceBlock(void) {
 
 // sanity check. Don't use proxmark if it is offline and you didn't specify useGraphbuf
 static int SanityOfflineCheck(bool useGraphBuffer) {
-    if (!useGraphBuffer && !session.pm3_present) {
+    if (!useGraphBuffer && !g_session.pm3_present) {
         PrintAndLogEx(WARNING, "Your proxmark3 device is offline. Specify [1] to use graphbuffer data instead");
         return PM3_ENODATA;
     }
@@ -801,7 +816,7 @@ static void T55xx_Print_DownlinkMode(uint8_t downlink_mode) {
             break;
     }
 
-    PrintAndLogEx(NORMAL, msg);
+    PrintAndLogEx(SUCCESS, msg);
 }
 
 static int CmdT55xxWakeUp(const char *Cmd) {
@@ -949,7 +964,7 @@ static int CmdT55xxDetect(const char *Cmd) {
     if (use_gb == false) {
 
         char wakecmd[20] = { 0x00 };
-        sprintf(wakecmd, "-p %08" PRIx64, password);
+        snprintf(wakecmd, sizeof(wakecmd), "-p %08" PRIx64, password);
 
         bool usewake = false;
         bool try_with_pwd = false;
@@ -1016,6 +1031,7 @@ static int CmdT55xxDetect(const char *Cmd) {
         config.pwd = 0x00;
         PrintAndLogEx(WARNING, "Could not detect modulation automatically. Try setting it manually with " _YELLOW_("\'lf t55xx config\'"));
     }
+
     return PM3_SUCCESS;
 }
 
@@ -1041,7 +1057,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_FSK2;
             tests[hits].bitrate = bitRate;
             tests[hits].inverted = false;
-            tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+            tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
             tests[hits].ST = false;
             tests[hits].downlink_mode = downlink_mode;
             ++hits;
@@ -1054,7 +1070,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_FSK2a;
             tests[hits].bitrate = bitRate;
             tests[hits].inverted = true;
-            tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+            tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
             tests[hits].ST = false;
             tests[hits].downlink_mode = downlink_mode;
             ++hits;
@@ -1072,7 +1088,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_ASK;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = false;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
             }
@@ -1086,7 +1102,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_ASK;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = true;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
             }
@@ -1094,7 +1110,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_BI;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = false;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].ST = false;
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
@@ -1103,7 +1119,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_BIa;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = true;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].ST = false;
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
@@ -1115,7 +1131,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_NRZ;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = false;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].ST = false;
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
@@ -1125,7 +1141,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_NRZ;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = true;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].ST = false;
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
@@ -1142,7 +1158,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_PSK1;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = false;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].ST = false;
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
@@ -1151,7 +1167,7 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
                 tests[hits].modulation = DEMOD_PSK1;
                 tests[hits].bitrate = bitRate;
                 tests[hits].inverted = true;
-                tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                 tests[hits].ST = false;
                 tests[hits].downlink_mode = downlink_mode;
                 ++hits;
@@ -1159,12 +1175,12 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
             //ICEMAN: are these PSKDemod calls needed?
             // PSK2 - needs a call to psk1TOpsk2.
             if (PSKDemod(0, 0, 6, false) == PM3_SUCCESS) {
-                psk1TOpsk2(DemodBuffer, DemodBufferLen);
+                psk1TOpsk2(g_DemodBuffer, g_DemodBufferLen);
                 if (test(DEMOD_PSK2, &tests[hits].offset, &bitRate, clk, &tests[hits].Q5)) {
                     tests[hits].modulation = DEMOD_PSK2;
                     tests[hits].bitrate = bitRate;
                     tests[hits].inverted = false;
-                    tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                    tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                     tests[hits].ST = false;
                     tests[hits].downlink_mode = downlink_mode;
                     ++hits;
@@ -1172,12 +1188,12 @@ bool t55xxTryDetectModulationEx(uint8_t downlink_mode, bool print_config, uint32
             } // inverse waves does not affect this demod
             // PSK3 - needs a call to psk1TOpsk2.
             if (PSKDemod(0, 0, 6, false) == PM3_SUCCESS) {
-                psk1TOpsk2(DemodBuffer, DemodBufferLen);
+                psk1TOpsk2(g_DemodBuffer, g_DemodBufferLen);
                 if (test(DEMOD_PSK3, &tests[hits].offset, &bitRate, clk, &tests[hits].Q5)) {
                     tests[hits].modulation = DEMOD_PSK3;
                     tests[hits].bitrate = bitRate;
                     tests[hits].inverted = false;
-                    tests[hits].block0 = PackBits(tests[hits].offset, 32, DemodBuffer);
+                    tests[hits].block0 = PackBits(tests[hits].offset, 32, g_DemodBuffer);
                     tests[hits].ST = false;
                     tests[hits].downlink_mode = downlink_mode;
                     ++hits;
@@ -1277,17 +1293,17 @@ bool testKnownConfigBlock(uint32_t block0) {
 
 bool GetT55xxBlockData(uint32_t *blockdata) {
 
-    if (DemodBufferLen == 0)
+    if (g_DemodBufferLen == 0)
         return false;
 
     uint8_t idx = config.offset;
 
-    if (idx + 32 > DemodBufferLen) {
-        PrintAndLogEx(WARNING, "The configured offset %d is too big. Possible offset: %zu)", idx, DemodBufferLen - 32);
+    if (idx + 32 > g_DemodBufferLen) {
+        PrintAndLogEx(WARNING, "The configured offset %d is too big. Possible offset: %zu)", idx, g_DemodBufferLen - 32);
         return false;
     }
 
-    *blockdata = PackBits(0, 32, DemodBuffer + idx);
+    *blockdata = PackBits(0, 32, g_DemodBuffer + idx);
     return true;
 }
 
@@ -1302,7 +1318,7 @@ void printT55xxBlock(uint8_t blockNum, bool page1) {
 
     T55x7_SaveBlockData((page1) ? blockNum + 8 : blockNum, val);
 
-    PrintAndLogEx(SUCCESS, " %02d | %08X | %s | %s", blockNum, val, sprint_bin(DemodBuffer + config.offset, 32), sprint_ascii(bytes, 4));
+    PrintAndLogEx(SUCCESS, " %02d | %08X | %s | %s", blockNum, val, sprint_bytebits_bin(g_DemodBuffer + config.offset, 32), sprint_ascii(bytes, 4));
 }
 
 static bool testModulation(uint8_t mode, uint8_t modread) {
@@ -1367,7 +1383,7 @@ static bool testQ5Modulation(uint8_t mode, uint8_t modread) {
 }
 
 static int convertQ5bitRate(uint8_t bitRateRead) {
-    uint8_t expected[] = {8, 16, 32, 40, 50, 64, 100, 128};
+    const uint8_t expected[] = {8, 16, 32, 40, 50, 64, 100, 128};
     for (int i = 0; i < 8; i++)
         if (expected[i] == bitRateRead)
             return i;
@@ -1377,36 +1393,36 @@ static int convertQ5bitRate(uint8_t bitRateRead) {
 
 static bool testQ5(uint8_t mode, uint8_t *offset, int *fndBitRate, uint8_t clk) {
 
-    if (DemodBufferLen < 64) return false;
+    if (g_DemodBufferLen < 64) return false;
 
     for (uint8_t idx = 28; idx < 64; idx++) {
         uint8_t si = idx;
-        if (PackBits(si, 28, DemodBuffer) == 0x00) continue;
+        if (PackBits(si, 28, g_DemodBuffer) == 0x00) continue;
 
-        uint8_t safer     = PackBits(si, 4, DemodBuffer);
+        uint8_t safer     = PackBits(si, 4, g_DemodBuffer);
         si += 4;     //master key
-        uint8_t resv      = PackBits(si, 8, DemodBuffer);
+        uint8_t resv      = PackBits(si, 8, g_DemodBuffer);
         si += 8;
         // 2nibble must be zeroed.
         if (safer != 0x6 && safer != 0x9) continue;
         if (resv > 0x00) continue;
-        //uint8_t pageSel   = PackBits(si, 1, DemodBuffer); si += 1;
-        //uint8_t fastWrite = PackBits(si, 1, DemodBuffer); si += 1;
+        //uint8_t pageSel   = PackBits(si, 1, g_DemodBuffer); si += 1;
+        //uint8_t fastWrite = PackBits(si, 1, g_DemodBuffer); si += 1;
         si += 1 + 1;
-        int bitRate       = PackBits(si, 6, DemodBuffer) * 2 + 2;
+        int bitRate       = PackBits(si, 6, g_DemodBuffer) * 2 + 2;
         si += 6;     //bit rate
         if (bitRate > 128 || bitRate < 8) continue;
 
-        //uint8_t AOR       = PackBits(si, 1, DemodBuffer); si += 1;
-        //uint8_t PWD       = PackBits(si, 1, DemodBuffer); si += 1;
-        //uint8_t pskcr     = PackBits(si, 2, DemodBuffer); si += 2;  //could check psk cr
-        //uint8_t inverse   = PackBits(si, 1, DemodBuffer); si += 1;
+        //uint8_t AOR       = PackBits(si, 1, g_DemodBuffer); si += 1;
+        //uint8_t PWD       = PackBits(si, 1, g_DemodBuffer); si += 1;
+        //uint8_t pskcr     = PackBits(si, 2, g_DemodBuffer); si += 2;  //could check psk cr
+        //uint8_t inverse   = PackBits(si, 1, g_DemodBuffer); si += 1;
         si += 1 + 1 + 2 + 1;
-        uint8_t modread   = PackBits(si, 3, DemodBuffer);
+        uint8_t modread   = PackBits(si, 3, g_DemodBuffer);
         si += 3;
-        uint8_t maxBlk    = PackBits(si, 3, DemodBuffer);
+        uint8_t maxBlk    = PackBits(si, 3, g_DemodBuffer);
         si += 3;
-        //uint8_t ST        = PackBits(si, 1, DemodBuffer); si += 1;
+        //uint8_t ST        = PackBits(si, 1, g_DemodBuffer); si += 1;
         if (maxBlk == 0) continue;
 
         //test modulation
@@ -1424,7 +1440,7 @@ static bool testQ5(uint8_t mode, uint8_t *offset, int *fndBitRate, uint8_t clk) 
 }
 
 static bool testBitRate(uint8_t readRate, uint8_t clk) {
-    uint8_t expected[] = {8, 16, 32, 40, 50, 64, 100, 128};
+    const uint8_t expected[] = {8, 16, 32, 40, 50, 64, 100, 128};
     if (expected[readRate] == clk)
         return true;
 
@@ -1433,28 +1449,28 @@ static bool testBitRate(uint8_t readRate, uint8_t clk) {
 
 bool test(uint8_t mode, uint8_t *offset, int *fndBitRate, uint8_t clk, bool *Q5) {
 
-    if (DemodBufferLen < 64) return false;
+    if (g_DemodBufferLen < 64) return false;
     for (uint8_t idx = 28; idx < 64; idx++) {
         uint8_t si = idx;
-        if (PackBits(si, 28, DemodBuffer) == 0x00) continue;
+        if (PackBits(si, 28, g_DemodBuffer) == 0x00) continue;
 
-        uint8_t safer    = PackBits(si, 4, DemodBuffer);
+        uint8_t safer    = PackBits(si, 4, g_DemodBuffer);
         si += 4;     //master key
-        uint8_t resv     = PackBits(si, 4, DemodBuffer);
+        uint8_t resv     = PackBits(si, 4, g_DemodBuffer);
         si += 4;     //was 7 & +=7+3 //should be only 4 bits if extended mode
         // 2nibble must be zeroed.
         // moved test to here, since this gets most faults first.
         if (resv > 0x00) continue;
 
-        int bitRate      = PackBits(si, 6, DemodBuffer);
+        int bitRate      = PackBits(si, 6, g_DemodBuffer);
         si += 6;     //bit rate (includes extended mode part of rate)
-        uint8_t extend   = PackBits(si, 1, DemodBuffer);
+        uint8_t extend   = PackBits(si, 1, g_DemodBuffer);
         si += 1;     //bit 15 extended mode
-        uint8_t modread  = PackBits(si, 5, DemodBuffer);
+        uint8_t modread  = PackBits(si, 5, g_DemodBuffer);
         si += 5 + 2 + 1;
-        //uint8_t pskcr   = PackBits(si, 2, DemodBuffer); si += 2+1;  //could check psk cr
-        //uint8_t nml01    = PackBits(si, 1, DemodBuffer); si += 1+5;   //bit 24, 30, 31 could be tested for 0 if not extended mode
-        //uint8_t nml02    = PackBits(si, 2, DemodBuffer); si += 2;
+        //uint8_t pskcr   = PackBits(si, 2, g_DemodBuffer); si += 2+1;  //could check psk cr
+        //uint8_t nml01    = PackBits(si, 1, g_DemodBuffer); si += 1+5;   //bit 24, 30, 31 could be tested for 0 if not extended mode
+        //uint8_t nml02    = PackBits(si, 2, g_DemodBuffer); si += 2;
 
         //if extended mode
         bool extMode = ((safer == 0x6 || safer == 0x9) && extend) ? true : false;
@@ -1484,7 +1500,7 @@ int CmdT55xxSpecial(const char *Cmd) {
 
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf t55xx special",
-                  "Show block changes with 64 different offsets,  data taken from Demod buffer.",
+                  "Show block changes with 64 different offsets,  data taken from DemodBuffer.",
                   "lf t55xx special\n"
                  );
 
@@ -1503,11 +1519,11 @@ int CmdT55xxSpecial(const char *Cmd) {
     for (; j < 64; ++j) {
 
         for (i = 0; i < 32; ++i)
-            bits[i] = DemodBuffer[j + i];
+            bits[i] = g_DemodBuffer[j + i];
 
         uint32_t blockData = PackBits(0, 32, bits);
 
-        PrintAndLogEx(NORMAL, "%02d | 0x%08X | %s", j, blockData, sprint_bin(bits, 32));
+        PrintAndLogEx(NORMAL, "%02d | 0x%08X | %s", j, blockData, sprint_bytebits_bin(bits, 32));
     }
     return PM3_SUCCESS;
 }
@@ -1726,7 +1742,7 @@ static int CmdT55xxReadTrace(const char *Cmd) {
         bool pwdmode = false;
         uint32_t password = 0;
 
-        // REGULAR_READ_MODE_BLOCK - yeilds correct Page 1 Block 2 data i.e. + 32 bit offset.
+        // REGULAR_READ_MODE_BLOCK - yields correct Page 1 Block 2 data i.e. + 32 bit offset.
         if (!AcquireData(T55x7_PAGE1, REGULAR_READ_MODE_BLOCK, pwdmode, password, downlink_mode))
             return PM3_ENODATA;
     }
@@ -1741,7 +1757,7 @@ static int CmdT55xxReadTrace(const char *Cmd) {
         }
     }
 
-    if (DemodBufferLen == 0) {
+    if (g_DemodBufferLen == 0) {
         return PM3_ESOFT;
     }
 
@@ -1749,11 +1765,11 @@ static int CmdT55xxReadTrace(const char *Cmd) {
     uint8_t repeat = (config.offset > 5) ? 32 : 0;
 
     uint8_t si = config.offset + repeat;
-    uint32_t bl1 = PackBits(si, 32, DemodBuffer);
-    uint32_t bl2 = PackBits(si + 32, 32, DemodBuffer);
+    uint32_t bl1 = PackBits(si, 32, g_DemodBuffer);
+    uint32_t bl2 = PackBits(si + 32, 32, g_DemodBuffer);
 
     if (config.Q5) {
-        uint32_t hdr = PackBits(si, 9,  DemodBuffer);
+        uint32_t hdr = PackBits(si, 9,  g_DemodBuffer);
         si += 9;
 
         if (hdr != 0x1FF) {
@@ -1763,42 +1779,42 @@ static int CmdT55xxReadTrace(const char *Cmd) {
 
         t5555_tracedata_t data = {.bl1 = bl1, .bl2 = bl2, .icr = 0, .lotidc = '?', .lotid = 0, .wafer = 0, .dw = 0};
 
-        data.icr     = PackBits(si, 2,  DemodBuffer);
+        data.icr     = PackBits(si, 2,  g_DemodBuffer);
         si += 2;
-        data.lotidc  = 'Z' - PackBits(si, 2,  DemodBuffer);
+        data.lotidc  = 'Z' - PackBits(si, 2,  g_DemodBuffer);
         si += 3;
 
-        data.lotid   = PackBits(si, 4,  DemodBuffer);
+        data.lotid   = PackBits(si, 4,  g_DemodBuffer);
         si += 5;
         data.lotid <<= 4;
-        data.lotid  |= PackBits(si, 4,  DemodBuffer);
+        data.lotid  |= PackBits(si, 4,  g_DemodBuffer);
         si += 5;
         data.lotid <<= 4;
-        data.lotid  |= PackBits(si, 4,  DemodBuffer);
+        data.lotid  |= PackBits(si, 4,  g_DemodBuffer);
         si += 5;
         data.lotid <<= 4;
-        data.lotid  |= PackBits(si, 4,  DemodBuffer);
+        data.lotid  |= PackBits(si, 4,  g_DemodBuffer);
         si += 5;
         data.lotid <<= 1;
-        data.lotid  |= PackBits(si, 1,  DemodBuffer);
+        data.lotid  |= PackBits(si, 1,  g_DemodBuffer);
         si += 1;
 
-        data.wafer   = PackBits(si, 3,  DemodBuffer);
+        data.wafer   = PackBits(si, 3,  g_DemodBuffer);
         si += 4;
         data.wafer <<= 2;
-        data.wafer  |= PackBits(si, 2,  DemodBuffer);
+        data.wafer  |= PackBits(si, 2,  g_DemodBuffer);
         si += 2;
 
-        data.dw      = PackBits(si, 2,  DemodBuffer);
+        data.dw      = PackBits(si, 2,  g_DemodBuffer);
         si += 3;
         data.dw    <<= 4;
-        data.dw     |= PackBits(si, 4,  DemodBuffer);
+        data.dw     |= PackBits(si, 4,  g_DemodBuffer);
         si += 5;
         data.dw    <<= 4;
-        data.dw     |= PackBits(si, 4,  DemodBuffer);
+        data.dw     |= PackBits(si, 4,  g_DemodBuffer);
         si += 5;
         data.dw    <<= 4;
-        data.dw     |= PackBits(si, 4,  DemodBuffer);
+        data.dw     |= PackBits(si, 4,  g_DemodBuffer);
 
         printT5555Trace(data, repeat);
 
@@ -1806,28 +1822,28 @@ static int CmdT55xxReadTrace(const char *Cmd) {
 
         t55x7_tracedata_t data = {.bl1 = bl1, .bl2 = bl2, .acl = 0, .mfc = 0, .cid = 0, .year = 0, .quarter = 0, .icr = 0,  .lotid = 0, .wafer = 0, .dw = 0};
 
-        data.acl = PackBits(si, 8,  DemodBuffer);
+        data.acl = PackBits(si, 8,  g_DemodBuffer);
         si += 8;
         if (data.acl != 0xE0) {
             PrintAndLogEx(FAILED, "The modulation is most likely wrong since the ACL is not 0xE0. ");
             return PM3_ESOFT;
         }
 
-        data.mfc     = PackBits(si, 8,  DemodBuffer);
+        data.mfc     = PackBits(si, 8,  g_DemodBuffer);
         si += 8;
-        data.cid     = PackBits(si, 5,  DemodBuffer);
+        data.cid     = PackBits(si, 5,  g_DemodBuffer);
         si += 5;
-        data.icr     = PackBits(si, 3,  DemodBuffer);
+        data.icr     = PackBits(si, 3,  g_DemodBuffer);
         si += 3;
-        data.year    = PackBits(si, 4,  DemodBuffer);
+        data.year    = PackBits(si, 4,  g_DemodBuffer);
         si += 4;
-        data.quarter = PackBits(si, 2,  DemodBuffer);
+        data.quarter = PackBits(si, 2,  g_DemodBuffer);
         si += 2;
-        data.lotid   = PackBits(si, 14, DemodBuffer);
+        data.lotid   = PackBits(si, 14, g_DemodBuffer);
         si += 14;
-        data.wafer   = PackBits(si, 5,  DemodBuffer);
+        data.wafer   = PackBits(si, 5,  g_DemodBuffer);
         si += 5;
-        data.dw      = PackBits(si, 15, DemodBuffer);
+        data.dw      = PackBits(si, 15, g_DemodBuffer);
 
         struct tm *ct, tm_buf;
         time_t now = time(NULL);
@@ -1860,13 +1876,13 @@ void printT55x7Trace(t55x7_tracedata_t data, uint8_t repeat) {
     PrintAndLogEx(INFO, "     Die Number..... %d", data.dw);
     PrintAndLogEx(INFO, "-------------------------------------------------------------");
     PrintAndLogEx(INFO, " Raw Data - Page 1");
-    PrintAndLogEx(INFO, "     Block 1... %08X - %s", data.bl1, sprint_bin(DemodBuffer + config.offset + repeat, 32));
-    PrintAndLogEx(INFO, "     Block 2... %08X - %s", data.bl2, sprint_bin(DemodBuffer + config.offset + repeat + 32, 32));
+    PrintAndLogEx(INFO, "     Block 1... %08X - %s", data.bl1, sprint_bytebits_bin(g_DemodBuffer + config.offset + repeat, 32));
+    PrintAndLogEx(INFO, "     Block 2... %08X - %s", data.bl2, sprint_bytebits_bin(g_DemodBuffer + config.offset + repeat + 32, 32));
     PrintAndLogEx(NORMAL, "");
 
     /*
     Trace info.
-      M1, M2  has the about ATMEL defintion of trace data.
+      M1, M2  has the about ATMEL definition of trace data.
       M3 has unique format following industry defacto standard with row/col parity
 
     TRACE - BLOCK O
@@ -1901,8 +1917,8 @@ void printT5555Trace(t5555_tracedata_t data, uint8_t repeat) {
     PrintAndLogEx(INFO, "     Die Number..... %d", data.dw);
     PrintAndLogEx(INFO, "-------------------------------------------------------------");
     PrintAndLogEx(INFO, " Raw Data - Page 1");
-    PrintAndLogEx(INFO, "     Block 1... %08X - %s", data.bl1, sprint_bin(DemodBuffer + config.offset + repeat, 32));
-    PrintAndLogEx(INFO, "     Block 2... %08X - %s", data.bl2, sprint_bin(DemodBuffer + config.offset + repeat + 32, 32));
+    PrintAndLogEx(INFO, "     Block 1... %08X - %s", data.bl1, sprint_bytebits_bin(g_DemodBuffer + config.offset + repeat, 32));
+    PrintAndLogEx(INFO, "     Block 2... %08X - %s", data.bl2, sprint_bytebits_bin(g_DemodBuffer + config.offset + repeat + 32, 32));
 
     /*
         ** Q5 **
@@ -2108,12 +2124,12 @@ static int CmdT55xxInfo(const char *Cmd) {
         }
 
         // too little space to start with
-        if (DemodBufferLen < 32 + config.offset) {
+        if (g_DemodBufferLen < 32 + config.offset) {
             return PM3_ESOFT;
         }
 
-        //PrintAndLogEx(NORMAL, "Offset+32 ==%d\n DemodLen == %d", config.offset + 32, DemodBufferLen);
-        block0 = PackBits(config.offset, 32, DemodBuffer);
+        //PrintAndLogEx(NORMAL, "Offset+32 ==%d\n DemodLen == %d", config.offset + 32, g_DemodBufferLen);
+        block0 = PackBits(config.offset, 32, g_DemodBuffer);
     }
 
     PrintAndLogEx(NORMAL, "");
@@ -2184,7 +2200,7 @@ static int CmdT55xxInfo(const char *Cmd) {
     if (gotdata)
         PrintAndLogEx(INFO, " " _GREEN_("%08X"), block0);
     else
-        PrintAndLogEx(INFO, " " _GREEN_("%08X") " - %s", block0, sprint_bin(DemodBuffer + config.offset, 32));
+        PrintAndLogEx(INFO, " " _GREEN_("%08X") " - %s", block0, sprint_bytebits_bin(g_DemodBuffer + config.offset, 32));
 
     if (((!gotdata) && (!config.Q5)) || (gotdata && (!dataasq5))) {
         PrintAndLogEx(INFO, "--- " _CYAN_("Fingerprint") " ------------");
@@ -2207,20 +2223,21 @@ static int CmdT55xxDump(const char *Cmd) {
                   "lf t55xx dump -f my_lf_dump"
                  );
 
-    // 1 (help) + 3 (two user specified params) + (5 T55XX_DLMODE_SINGLE)
-    void *argtable[4 + 5] = {
+    // 1 (help) + 4 (two user specified params) + (5 T55XX_DLMODE_SINGLE)
+    void *argtable[5 + 5] = {
         arg_param_begin,
         arg_str0("f", "file", "<fn>", "filename (default is generated on blk 0)"),
         arg_lit0("o", "override", "override, force pwd read despite danger to card"),
         arg_str0("p", "pwd", "<hex>", "password (4 hex bytes)"),
+        arg_lit0(NULL, "ns", "no save"),
     };
-    uint8_t idx = 4;
+    uint8_t idx = 5;
     arg_add_t55xx_downloadlink(argtable, &idx, T55XX_DLMODE_SINGLE, T55XX_DLMODE_SINGLE);
     CLIExecWithReturn(ctx, Cmd, argtable, true);
 
     int fnlen = 0;
     char filename[FILE_PATH_SIZE] = {0};
-    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)filename, sizeof(filename), &fnlen);
+    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)filename, FILE_PATH_SIZE, &fnlen);
 
     uint8_t override = arg_get_lit(ctx, 2) ? 1 : 0;
 
@@ -2236,10 +2253,12 @@ static int CmdT55xxDump(const char *Cmd) {
         usepwd = true;
     }
 
-    bool r0 = arg_get_lit(ctx, 4);
-    bool r1 = arg_get_lit(ctx, 5);
-    bool r2 = arg_get_lit(ctx, 6);
-    bool r3 = arg_get_lit(ctx, 7);
+    bool nosave = arg_get_lit(ctx, 4);
+
+    bool r0 = arg_get_lit(ctx, 5);
+    bool r1 = arg_get_lit(ctx, 6);
+    bool r2 = arg_get_lit(ctx, 7);
+    bool r3 = arg_get_lit(ctx, 8);
     CLIParserFree(ctx);
 
     if ((r0 + r1 + r2 + r3) > 1) {
@@ -2263,8 +2282,9 @@ static int CmdT55xxDump(const char *Cmd) {
     // will save the dump file if ALL page 0 is OK
     printT5xxHeader(0);
     for (uint8_t i = 0; i < 8; ++i) {
-        if (T55xxReadBlock(i, 0, usepwd, override, password, downlink_mode) != PM3_SUCCESS)
+        if (T55xxReadBlock(i, 0, usepwd, override, password, downlink_mode) != PM3_SUCCESS) {
             success = false;
+        }
 
         // only show override warning on the first block read
         if (override == 1) {
@@ -2272,12 +2292,14 @@ static int CmdT55xxDump(const char *Cmd) {
         }
     }
     printT5xxHeader(1);
-    for (uint8_t i = 0; i < 4; i++)
-        if (T55xxReadBlock(i, 1, usepwd, override, password, downlink_mode) != PM3_SUCCESS)
+    for (uint8_t i = 0; i < 4; i++) {
+        if (T55xxReadBlock(i, 1, usepwd, override, password, downlink_mode) != PM3_SUCCESS) {
             T55x7_SaveBlockData(8 + i, 0x00);
+        }
+    }
 
     // all ok, save dump to file
-    if (success) {
+    if (success && nosave == false) {
 
         // set default filename, if not set by user
         if (strlen(filename) == 0) {
@@ -2326,7 +2348,7 @@ static int CmdT55xxRestore(const char *Cmd) {
 
     int fnlen = 0;
     char filename[FILE_PATH_SIZE] = {0};
-    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)filename, sizeof(filename), &fnlen);
+    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)filename, FILE_PATH_SIZE, &fnlen);
 
     bool usepwd = false;
     uint32_t password = 0;
@@ -2346,43 +2368,17 @@ static int CmdT55xxRestore(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    size_t dlen = 0;
-    void *dump = NULL;
-    DumpFileType_t dftype = getfiletype(filename);
-    switch (dftype) {
-        case BIN: {
-            res = loadFile_safe(filename, ".bin", (void **)&dump, &dlen);
-            break;
-        }
-        case EML: {
-            res = loadFileEML_safe(filename, (void **)&dump, &dlen);
-            break;
-        }
-        case JSON: {
-            dump = calloc(T55x7_BLOCK_COUNT * 4, sizeof(uint8_t));
-            if (dump == NULL) {
-                PrintAndLogEx(WARNING, "Fail, cannot allocate memory");
-                return PM3_EMALLOC;
-            }
-            res = loadFileJSON(filename, dump, T55x7_BLOCK_COUNT * 4, &dlen, NULL);
-            break;
-        }
-        case DICTIONARY: {
-            PrintAndLogEx(ERR, "Error: Only BIN/EML/JSON formats allowed");
-            free(dump);
-            return PM3_EINVARG;
-        }
-    }
-
-    //sanity checks of file processing
+    // read dump file
+    uint32_t *dump = NULL;
+    size_t bytes_read = 0;
+    res = pm3_load_dump(filename, (void **)&dump, &bytes_read, (T55x7_BLOCK_COUNT * 4));
     if (res != PM3_SUCCESS) {
-        free(dump);
         return res;
     }
 
-    if (dlen != T55x7_BLOCK_COUNT * 4) {
+    if (bytes_read != (T55x7_BLOCK_COUNT * 4)) {
         free(dump);
-        PrintAndLogEx(FAILED, "wrong length of dump file. Expected 48 bytes, got %zu", dlen);
+        PrintAndLogEx(FAILED, "wrong length of dump file. Expected 48 bytes, got %zu", bytes_read);
         return PM3_EFILE;
     }
 
@@ -2394,14 +2390,14 @@ static int CmdT55xxRestore(const char *Cmd) {
     char wcmd[100];
     char pwdopt [14] = {0}; // p XXXXXXXX
 
-    if (usepwd)
+    if (usepwd) {
         snprintf(pwdopt, sizeof(pwdopt), "-p %08X", password);
+    }
 
-    uint32_t *data = (uint32_t *) dump;
     uint8_t idx;
     // Restore endien for writing to card
     for (idx = 0; idx < 12; idx++) {
-        data[idx] = BSWAP_32(data[idx]);
+        dump[idx] = BSWAP_32(dump[idx]);
     }
 
     // Have data ready, lets write
@@ -2410,12 +2406,12 @@ static int CmdT55xxRestore(const char *Cmd) {
     //    write blocks 1..3 page 1
     //    update downlink mode (if needed) and write b 0
     downlink_mode = 0;
-    if ((((data[11] >> 28) & 0xf) == 6) || (((data[11] >> 28) & 0xf) == 9))
-        downlink_mode = (data[11] >> 10) & 3;
+    if ((((dump[11] >> 28) & 0xF) == 6) || (((dump[11] >> 28) & 0xF) == 9))
+        downlink_mode = (dump[11] >> 10) & 3;
 
     // write out blocks 1-7 page 0
     for (idx = 1; idx <= 7; idx++) {
-        snprintf(wcmd, sizeof(wcmd), "-b %d -d %08X %s", idx, data[idx], pwdopt);
+        snprintf(wcmd, sizeof(wcmd), "-b %d -d %08X %s", idx, dump[idx], pwdopt);
 
         if (CmdT55xxWriteBlock(wcmd) != PM3_SUCCESS) {
             PrintAndLogEx(WARNING, "Warning: error writing blk %d", idx);
@@ -2424,12 +2420,12 @@ static int CmdT55xxRestore(const char *Cmd) {
 
     // if password was set on the "blank" update as we may have just changed it
     if (usepwd) {
-        snprintf(pwdopt, sizeof(pwdopt), "-p %08X", data[7]);
+        snprintf(pwdopt, sizeof(pwdopt), "-p %08X", dump[7]);
     }
 
     // write out blocks 1-3 page 1
     for (idx = 9; idx <= 11; idx++) {
-        snprintf(wcmd, sizeof(wcmd), "-b %d --pg1 -d %08X %s", idx - 8, data[idx], pwdopt);
+        snprintf(wcmd, sizeof(wcmd), "-b %d --pg1 -d %08X %s", idx - 8, dump[idx], pwdopt);
 
         if (CmdT55xxWriteBlock(wcmd) != PM3_SUCCESS) {
             PrintAndLogEx(WARNING, "Warning: error writing blk %d", idx);
@@ -2440,7 +2436,7 @@ static int CmdT55xxRestore(const char *Cmd) {
     config.downlink_mode = downlink_mode;
 
     // Write the page 0 config
-    snprintf(wcmd, sizeof(wcmd), "-b 0 -d %08X %s", data[0], pwdopt);
+    snprintf(wcmd, sizeof(wcmd), "-b 0 -d %08X %s", dump[0], pwdopt);
     if (CmdT55xxWriteBlock(wcmd) != PM3_SUCCESS) {
         PrintAndLogEx(WARNING, "Warning: error writing blk 0");
     }
@@ -2564,7 +2560,7 @@ char *GetPskCfStr(uint32_t id, bool q5) {
 }
 
 char *GetBitRateStr(uint32_t id, bool xmode) {
-    static char buf[25];
+    static char buf[35];
 
     char *retStr = buf;
     if (xmode) { //xmode bitrate calc is same as em4x05 calc
@@ -2882,7 +2878,7 @@ static int CmdResetRead(const char *Cmd) {
 
     if (resp.status == PM3_SUCCESS) {
 
-        uint16_t gotsize = pm3_capabilities.bigbuf_size - 1;
+        uint16_t gotsize = g_pm3_capabilities.bigbuf_size - 1;
         uint8_t *got = calloc(gotsize, sizeof(uint8_t));
         if (got == NULL) {
             PrintAndLogEx(WARNING, "failed to allocate memory");
@@ -3045,7 +3041,7 @@ static int CmdT55xxChkPwds(const char *Cmd) {
 
     int fnlen = 0;
     char filename[FILE_PATH_SIZE] = {0};
-    CLIParamStrToBuf(arg_get_str(ctx, 2), (uint8_t *)filename, sizeof(filename), &fnlen);
+    CLIParamStrToBuf(arg_get_str(ctx, 2), (uint8_t *)filename, FILE_PATH_SIZE, &fnlen);
 
     // White cloner password based on EM4100 ID
     bool use_calc_password = false;
@@ -3196,7 +3192,7 @@ static int CmdT55xxChkPwds(const char *Cmd) {
 
         for (uint32_t c = 0; c < keycount && found == false; ++c) {
 
-            if (!session.pm3_present) {
+            if (!g_session.pm3_present) {
                 PrintAndLogEx(WARNING, "device offline\n");
                 free(keyblock);
                 return PM3_ENODATA;
@@ -3211,7 +3207,7 @@ static int CmdT55xxChkPwds(const char *Cmd) {
 
             PrintAndLogEx(INFO, "testing %08"PRIX32, curr_password);
             for (dl_mode = downlink_mode; dl_mode <= 3; dl_mode++) {
-                // If aquire fails, then we still need to check if we are only trying a single downlink mode.
+                // If acquire fails, then we still need to check if we are only trying a single downlink mode.
                 // If we continue on fail, it will skip that test and try the next downlink mode; thus slowing down the check
                 // when on a single downlink mode is wanted.
                 if (AcquireData(T55x7_PAGE0, T55x7_CONFIGURATION_BLOCK, true, curr_password, dl_mode)) {
@@ -3287,7 +3283,7 @@ static int CmdT55xxBruteForce(const char *Cmd) {
     }
 
     uint8_t downlink_mode = refFixedBit; // if no downlink mode suppliled use fixed bit/default as the is the most common
-    // Since we dont know the password the config.downlink mode is of little value.
+    // Since we don't know the password the config.downlink mode is of little value.
 //   if (r0 || ra) // if try all (ra) then start at fixed bit for correct try all
 //       downlink_mode = refFixedBit;
 //    else
@@ -3517,13 +3513,13 @@ bool tryDetectP1(bool getData) {
     ans = fskClocks(&fc1, &fc2, (uint8_t *)&clk, &firstClockEdge);
     if (ans && ((fc1 == 10 && fc2 == 8) || (fc1 == 8 && fc2 == 5))) {
         if ((FSKrawDemod(0, 0, 0, 0, false) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
         if ((FSKrawDemod(0, 1, 0, 0, false) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
         return false;
@@ -3533,27 +3529,27 @@ bool tryDetectP1(bool getData) {
     clk = GetAskClock("", false);
     if (clk > 0) {
         if ((ASKDemod_ext(0, 0, 1, 0, false, false, false, 1, &st) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
 
         st = true;
         if ((ASKDemod_ext(0, 1, 1, 0, false, false, false, 1, &st) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
 
         if ((ASKbiphaseDemod(0, 0, 0, 2, false) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
 
         if ((ASKbiphaseDemod(0, 0, 1, 2, false) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
     }
@@ -3562,13 +3558,13 @@ bool tryDetectP1(bool getData) {
     clk = GetNrzClock("", false); //has the most false positives :(
     if (clk > 0) {
         if ((NRZrawDemod(0, 0, 1, false) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
         if ((NRZrawDemod(0, 1, 1, false) == PM3_SUCCESS)  &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             return true;
         }
     }
@@ -3582,22 +3578,22 @@ bool tryDetectP1(bool getData) {
         // skip first 160 samples to allow antenna to settle in (psk gets inverted occasionally otherwise)
         //CmdLtrim("-i 160");
         if ((PSKDemod(0, 0, 6, false) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             //save_restoreGB(GRAPH_RESTORE);
             return true;
         }
         if ((PSKDemod(0, 1, 6, false) == PM3_SUCCESS) &&
-                preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+                preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
             //save_restoreGB(GRAPH_RESTORE);
             return true;
         }
         // PSK2 - needs a call to psk1TOpsk2.
         if (PSKDemod(0, 0, 6, false) == PM3_SUCCESS) {
-            psk1TOpsk2(DemodBuffer, DemodBufferLen);
-            if (preambleSearchEx(DemodBuffer, preamble, sizeof(preamble), &DemodBufferLen, &startIdx, false) &&
-                    (DemodBufferLen == 32 || DemodBufferLen == 64)) {
+            psk1TOpsk2(g_DemodBuffer, g_DemodBufferLen);
+            if (preambleSearchEx(g_DemodBuffer, preamble, sizeof(preamble), &g_DemodBufferLen, &startIdx, false) &&
+                    (g_DemodBufferLen == 32 || g_DemodBufferLen == 64)) {
                 //save_restoreGB(GRAPH_RESTORE);
                 return true;
             }
@@ -3904,7 +3900,7 @@ static int CmdT55xxProtect(const char *Cmd) {
 // if the difference between a and b is less then or eq to d  i.e. does a = b +/- d
 #define APPROX_EQ(a, b, d) ((abs(a - b) <= d) ? true : false)
 
-static uint8_t t55sniff_get_packet(int *pulseBuffer, char *data, uint8_t width0, uint8_t width1, uint8_t tolerance) {
+static uint8_t t55sniff_get_packet(const int *pulseBuffer, char *data, uint8_t width0, uint8_t width1, uint8_t tolerance) {
     int i = 0;
     bool ok = true;
     uint8_t len = 0;
@@ -4022,7 +4018,6 @@ static int CmdT55xxSniff(const char *Cmd) {
     size_t idx = 0;
     uint32_t usedPassword, blockData;
     int pulseSamples = 0, pulseIdx = 0;
-    char modeText[100];
     char pwdText[100];
     char dataText[100];
     int pulseBuffer[80] = { 0 }; // max should be 73 +/- - Holds Pulse widths
@@ -4031,47 +4026,50 @@ static int CmdT55xxSniff(const char *Cmd) {
     // setup and sample data from Proxmark
     // if not directed to existing sample/graphbuffer
     if (use_graphbuf == false) {
+
+        // make loop to call sniff with skip samples..
+        // then build it up by adding
         CmdLFSniff("");
+
     }
 
     // Headings
     PrintAndLogEx(NORMAL, "");
     PrintAndLogEx(INFO, _CYAN_("T55xx command detection"));
-    PrintAndLogEx(SUCCESS, "Downlink mode         | password |   Data   | blk | page |  0  |  1  | raw");
-    PrintAndLogEx(SUCCESS, "----------------------+----------+----------+-----+------+-----+-----+-------------------------------------------------------------------------------");
+    PrintAndLogEx(SUCCESS, "Downlink mode           |  password  |   Data   | blk | page |  0  |  1  | raw");
+    PrintAndLogEx(SUCCESS, "------------------------+------------+----------+-----+------+-----+-----+-------------------------------------------------------------------------------");
 
     idx = 0;
     // loop though sample buffer
-    while (idx < GraphTraceLen) {
+    while (idx < g_GraphTraceLen) {
 
         int minWidth = 1000;
         int maxWidth = 0;
-        uint16_t dataLen = 0;
         data[0] = 0;
         bool have_data = false;
-        sprintf(modeText, "Default");
-        sprintf(pwdText, " ");
-        sprintf(dataText, " ");
+        const char *modeText = "Default";
+        strncpy(pwdText, " ", sizeof(pwdText));
+        strncpy(dataText, " ", sizeof(dataText));
 
         if (pulseSamples == 0) {
             idx++;
         }
 
         // find high
-        while ((idx < GraphTraceLen) && (GraphBuffer[idx] < 0)) {
+        while ((idx < g_GraphTraceLen) && (g_GraphBuffer[idx] < 0)) {
             idx++;
         }
 
         // count high samples
         pulseSamples = 0;
-        while ((idx < GraphTraceLen) && (GraphBuffer[idx] > 0)) { // last bit seems to be high to zero, but can vary in width..
+        while ((idx < g_GraphTraceLen) && (g_GraphBuffer[idx] > 0)) { // last bit seems to be high to zero, but can vary in width..
             pulseSamples++;
             idx++;
         }
 
         if (pulseSamples > 0) {
             pulseBuffer[pulseIdx++] = pulseSamples;
-            if (pulseIdx > 79) { // make room for next sample - if not used by now, it wont be.
+            if (pulseIdx > 79) { // make room for next sample - if not used by now, it won't be.
                 t55sniff_trim_samples(pulseBuffer, &pulseIdx, 1);
             }
 
@@ -4082,7 +4080,7 @@ static int CmdT55xxSniff(const char *Cmd) {
                 // We auto find widths
                 if ((width0 == 0) && (width1 == 0)) {
                     // We ignore bit 0 for the moment as it may be a ref. pulse, so check last
-                    uint8_t ii = 2;
+                    uint32_t ii = 2;
                     minWidth = pulseBuffer[1];
                     maxWidth = pulseBuffer[1];
                     bool done = false;
@@ -4111,20 +4109,20 @@ static int CmdT55xxSniff(const char *Cmd) {
             // At this point we should have
             // - a min of 6 samples
             // - the 0 and 1 sample widths
-            // - min 0 and min seperations (worst case)
+            // - min 0 and min separations (worst case)
             // No max checks done (yet) as have seen samples > then specs in use.
 
             // Check first bit.
 
             // Long leading 0
             if (have_data == false && (APPROX_EQ(pulseBuffer[0], 136 + minWidth, tolerance) && APPROX_EQ(pulseBuffer[1], maxWidth, tolerance))) {
-                // printf ("Long Leading 0 - not yet hanled | have 1 Fisrt bit | Min : %-3d - Max : %-3d : diff : %d\n",minWidth,maxWidth, maxWidth-minWidth);
+                // printf ("Long Leading 0 - not yet handled | have 1 First bit | Min : %-3d - Max : %-3d : diff : %d\n",minWidth,maxWidth, maxWidth-minWidth);
                 continue;
             }
 
             // Fixed bit - Default
             if (have_data == false && (APPROX_EQ(pulseBuffer[0], maxWidth, tolerance))) {
-                dataLen = t55sniff_get_packet(pulseBuffer, data, minWidth, maxWidth, tolerance);
+                uint16_t dataLen = t55sniff_get_packet(pulseBuffer, data, minWidth, maxWidth, tolerance);
 
                 //   if ((dataLen == 39) )
                 //           printf ("Fixed | Data end of 80 samples | offset : %llu - datalen %-2d - data : %s  --- - Bit 0 width : %d\n",idx,dataLen,data,pulseBuffer[0]);
@@ -4141,12 +4139,13 @@ static int CmdT55xxSniff(const char *Cmd) {
                         blockAddr = 0;
                         for (uint8_t i = 3; i < 6; i++) {
                             blockAddr <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 blockAddr |= 1;
+                            }
                         }
                         blockData = 0;
                         have_data = true;
-                        sprintf(modeText, "Default Read");
+                        modeText = "Default Read";
                     }
 
                     // Password Write
@@ -4157,29 +4156,38 @@ static int CmdT55xxSniff(const char *Cmd) {
                         usedPassword = 0;
                         for (uint8_t i = 2; i <= 33; i++) {
                             usedPassword <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 usedPassword |= 1;
                         }
+                        }
+
                         // Lock bit 34
                         blockData = 0;
                         for (uint8_t i = 35; i <= 66; i++) {
                             blockData <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 blockData |= 1;
                         }
+                        }
+
                         blockAddr = 0;
                         for (uint8_t i = 67; i <= 69; i++) {
                             blockAddr <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 blockAddr |= 1;
+                            }
                         }
                         have_data = true;
-                        sprintf(modeText, "Default pwd write");
-                        sprintf(pwdText, "%08X", usedPassword);
-                        sprintf(dataText, "%08X", blockData);
+                        modeText = "Default pwd write";
+                        snprintf(pwdText, sizeof(pwdText), " %08X", usedPassword);
+                        snprintf(dataText, sizeof(dataText), "%08X", blockData);
                     }
 
-                    // Default Write (or password read ??)
+                    // Default Write or password read ???
+                    // the most confusing command.
+                    // if the token is with a password - all is OK,
+                    // if not - read command with a password will lead to write the shifted password to the memory and:
+                    //    IF the most bit of the data is `1` ----> IT LEADS TO LOCK this block of the memory
                     if (dataLen == 38) {
                         t55sniff_trim_samples(pulseBuffer, &pulseIdx, 38);
 
@@ -4188,18 +4196,29 @@ static int CmdT55xxSniff(const char *Cmd) {
                         blockData = 0;
                         for (uint8_t i = 3; i <= 34; i++) {
                             blockData <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 blockData |= 1;
                         }
+                        }
+
+                        for (uint8_t i = 2; i <= 33; i++) {
+                            usedPassword <<= 1;
+                            if (data[i] == '1') {
+                                usedPassword |= 1;
+                            }
+                        }
+
                         blockAddr = 0;
                         for (uint8_t i = 35; i <= 37; i++) {
                             blockAddr <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 blockAddr |= 1;
+                            }
                         }
                         have_data = true;
-                        sprintf(modeText, "Default write");
-                        sprintf(dataText, "%08X", blockData);
+                        modeText = "Default write/pwd read";
+                        snprintf(pwdText, sizeof(pwdText), "[%08X]", usedPassword);
+                        snprintf(dataText, sizeof(dataText), "%08X", blockData);
                     }
                 }
             }
@@ -4208,7 +4227,7 @@ static int CmdT55xxSniff(const char *Cmd) {
             if (have_data == false && (APPROX_EQ(pulseBuffer[0], minWidth, tolerance))) {
                 // leading 0 (should = 0 width)
                 // 1 of 4 (leads with 00)
-                dataLen = t55sniff_get_packet(pulseBuffer, data, minWidth, maxWidth, tolerance);
+                uint16_t dataLen = t55sniff_get_packet(pulseBuffer, data, minWidth, maxWidth, tolerance);
                 // **** Should check to 0 to be actual 0 as well i.e. 01 .... data ....
                 if ((data[0] == '0') && (data[1] == '1')) {
                     if (dataLen == 73) {
@@ -4218,25 +4237,31 @@ static int CmdT55xxSniff(const char *Cmd) {
                         usedPassword = 0;
                         for (uint8_t i = 5; i <= 36; i++) {
                             usedPassword <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 usedPassword |= 1;
                         }
+                        }
+
                         blockData = 0;
                         for (uint8_t i = 38; i <= 69; i++) {
                             blockData <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 blockData |= 1;
                         }
+                        }
+
                         blockAddr = 0;
                         for (uint8_t i = 70; i <= 72; i++) {
                             blockAddr <<= 1;
-                            if (data[i] == '1')
+                            if (data[i] == '1') {
                                 blockAddr |= 1;
                         }
+                        }
+
                         have_data = true;
-                        sprintf(modeText, "Leading 0 pwd write");
-                        sprintf(pwdText, "%08X", usedPassword);
-                        sprintf(dataText, "%08X", blockData);
+                        modeText = "Leading 0 pwd write";
+                        snprintf(pwdText, sizeof(pwdText), " %08X", usedPassword);
+                        snprintf(dataText, sizeof(dataText), "%08X", blockData);
                     }
                 }
             }
@@ -4244,10 +4269,29 @@ static int CmdT55xxSniff(const char *Cmd) {
 
         // Print results
         if (have_data) {
-            if (blockAddr == 7)
-                PrintAndLogEx(SUCCESS, "%-20s  | "_GREEN_("%8s")" | "_YELLOW_("%8s")" |  "_YELLOW_("%d")"  |   "_GREEN_("%d")"  | %3d | %3d | %s", modeText, pwdText, dataText, blockAddr, page, minWidth, maxWidth, data);
-            else
-                PrintAndLogEx(SUCCESS, "%-20s  | "_GREEN_("%8s")" | "_GREEN_("%8s")" |  "_GREEN_("%d")"  |   "_GREEN_("%d")"  | %3d | %3d | %s", modeText, pwdText, dataText, blockAddr, page, minWidth, maxWidth, data);
+            if (blockAddr == 7) {
+                PrintAndLogEx(SUCCESS, "%-22s  | "_GREEN_("%10s")" | "_YELLOW_("%8s")" |  "_YELLOW_("%d")"  |   "_GREEN_("%d")"  | %3d | %3d | %s"
+                    , modeText
+                    , pwdText
+                    , dataText
+                    , blockAddr
+                    , page
+                    , minWidth
+                    , maxWidth
+                    , data
+                );
+            } else {
+                PrintAndLogEx(SUCCESS, "%-22s  | "_GREEN_("%10s")" | "_GREEN_("%8s")" |  "_GREEN_("%d")"  |   "_GREEN_("%d")"  | %3d | %3d | %s"
+                    , modeText
+                    , pwdText
+                    , dataText
+                    , blockAddr
+                    , page
+                    , minWidth
+                    , maxWidth
+                    , data
+                );
+            }
         }
     }
 

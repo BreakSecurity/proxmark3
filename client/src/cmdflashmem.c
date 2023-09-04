@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2018 iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Proxmark3 RDV40 Flash memory commands
 //-----------------------------------------------------------------------------
@@ -167,7 +175,7 @@ static int CmdFlashMemLoad(const char *Cmd) {
         arg_lit0("m", "mifare,mfc", "upload 6 bytes keys (mifare key dictionary)"),
         arg_lit0("i", "iclass", "upload 8 bytes keys (iClass key dictionary)"),
         arg_lit0("t", "t55xx", "upload 4 bytes keys (password dictionary)"),
-        arg_strx0("f", "file", "<filename>", "file name"),
+        arg_str1("f", "file", "<fn>", "file name"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -196,19 +204,23 @@ static int CmdFlashMemLoad(const char *Cmd) {
     size_t datalen = 0;
     uint32_t keycount = 0;
     int res = 0;
+    uint8_t keylen = 0;
     uint8_t *data = calloc(FLASH_MEM_MAX_SIZE, sizeof(uint8_t));
 
     switch (d) {
         case DICTIONARY_MIFARE:
             offset = DEFAULT_MF_KEYS_OFFSET;
-            res = loadFileDICTIONARY(filename, data + 2, &datalen, 6, &keycount);
+            keylen = 6;
+            res = loadFileDICTIONARY(filename, data + 2, &datalen, keylen, &keycount);
             if (res || !keycount) {
                 free(data);
                 return PM3_EFILE;
             }
             // limited space on flash mem
-            if (keycount > 0xFFFF)
-                keycount &= 0xFFFF;
+            if (keycount > DEFAULT_MF_KEYS_MAX) {
+                keycount = DEFAULT_MF_KEYS_MAX;
+                datalen = keycount * keylen;
+            }
 
             data[0] = (keycount >> 0) & 0xFF;
             data[1] = (keycount >> 8) & 0xFF;
@@ -216,14 +228,17 @@ static int CmdFlashMemLoad(const char *Cmd) {
             break;
         case DICTIONARY_T55XX:
             offset = DEFAULT_T55XX_KEYS_OFFSET;
-            res = loadFileDICTIONARY(filename, data + 2, &datalen, 4, &keycount);
+            keylen = 4;
+            res = loadFileDICTIONARY(filename, data + 2, &datalen, keylen, &keycount);
             if (res || !keycount) {
                 free(data);
                 return PM3_EFILE;
             }
             // limited space on flash mem
-            if (keycount > 0xFFFF)
-                keycount &= 0xFFFF;
+            if (keycount > DEFAULT_T55XX_KEYS_MAX) {
+                keycount = DEFAULT_T55XX_KEYS_MAX;
+                datalen = keycount * keylen;
+            }
 
             data[0] = (keycount >> 0) & 0xFF;
             data[1] = (keycount >> 8) & 0xFF;
@@ -231,14 +246,16 @@ static int CmdFlashMemLoad(const char *Cmd) {
             break;
         case DICTIONARY_ICLASS:
             offset = DEFAULT_ICLASS_KEYS_OFFSET;
-            res = loadFileDICTIONARY(filename, data + 2, &datalen, 8, &keycount);
+            res = loadFileDICTIONARY(filename, data + 2, &datalen, keylen, &keycount);
             if (res || !keycount) {
                 free(data);
                 return PM3_EFILE;
             }
             // limited space on flash mem
-            if (keycount > 0xFFFF)
-                keycount &= 0xFFFF;
+            if (keycount > DEFAULT_ICLASS_KEYS_MAX) {
+                keycount = DEFAULT_ICLASS_KEYS_MAX;
+                datalen = keycount * keylen;
+            }
 
             data[0] = (keycount >> 0) & 0xFF;
             data[1] = (keycount >> 8) & 0xFF;
@@ -258,7 +275,8 @@ static int CmdFlashMemLoad(const char *Cmd) {
             }
             break;
     }
-// not needed when we transite to loadxxxx_safe methods.(iceman)
+
+    // ICEMAN: not needed when we transite to loadxxxx_safe methods
     uint8_t *newdata = realloc(data, datalen);
     if (newdata == NULL) {
         free(data);
@@ -273,7 +291,7 @@ static int CmdFlashMemLoad(const char *Cmd) {
 
 
     // fast push mode
-    conn.block_after_ACK = true;
+    g_conn.block_after_ACK = true;
 
     while (bytes_remaining > 0) {
         uint32_t bytes_in_packet = MIN(FLASH_MEM_BLOCK_SIZE, bytes_remaining);
@@ -293,20 +311,20 @@ static int CmdFlashMemLoad(const char *Cmd) {
         PacketResponseNG resp;
         if (WaitForResponseTimeout(CMD_FLASHMEM_WRITE, &resp, 2000) == false) {
             PrintAndLogEx(WARNING, "timeout while waiting for reply.");
-            conn.block_after_ACK = false;
+            g_conn.block_after_ACK = false;
             free(data);
             return PM3_ETIMEOUT;
         }
 
         if (resp.status != PM3_SUCCESS) {
-            conn.block_after_ACK = false;
+            g_conn.block_after_ACK = false;
             PrintAndLogEx(FAILED, "Flash write fail [offset %u]", bytes_sent);
             free(data);
             return PM3_EFLASH;
         }
     }
 
-    conn.block_after_ACK = false;
+    g_conn.block_after_ACK = false;
     free(data);
     PrintAndLogEx(SUCCESS, "Wrote "_GREEN_("%zu")" bytes to offset "_GREEN_("%u"), datalen, offset);
     return PM3_SUCCESS;
@@ -327,7 +345,7 @@ static int CmdFlashMemDump(const char *Cmd) {
         arg_int0("o", "offset", "<dec>", "offset in memory"),
         arg_int0("l", "len", "<dec>", "length"),
         arg_lit0("v", "view", "view dump"),
-        arg_strx0("f", "file", "<filename>", "file name"),
+        arg_str0("f", "file", "<fn>", "save filename"),
         arg_int0("c", "cols", "<dec>", "column breaks (def 32)"),
         arg_param_end
     };
@@ -376,20 +394,20 @@ static int CmdFlashMemWipe(const char *Cmd) {
                   "Wipe flash memory on device, which fills it with 0xFF\n"
                   _WHITE_("[ ") _RED_("!!! OBS") _WHITE_(" ] use with caution"),
                   "mem wipe -p 0   -> wipes first page"
-//                  "mem wipe -i   -> inital total wipe"
+//                  "mem wipe -i   -> initial total wipe"
                  );
 
     void *argtable[] = {
         arg_param_begin,
         arg_int0("p", NULL, "<dec>", "0,1,2 page memory"),
-//        arg_lit0("i", NULL, "inital total wipe"),
+//        arg_lit0("i", NULL, "initial total wipe"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
 
-    bool initalwipe = false;
+    bool initialwipe = false;
     int page = arg_get_int_def(ctx, 1, -1);
-//    initalwipe = arg_get_lit(ctx, 2);
+//    initialwipe = arg_get_lit(ctx, 2);
     CLIParserFree(ctx);
 
     if (page < 0 || page > 2) {
@@ -398,7 +416,7 @@ static int CmdFlashMemWipe(const char *Cmd) {
     }
 
     clearCommandBuffer();
-    SendCommandMIX(CMD_FLASHMEM_WIPE, page, initalwipe, 0, NULL, 0);
+    SendCommandMIX(CMD_FLASHMEM_WIPE, page, initialwipe, 0, NULL, 0);
     PacketResponseNG resp;
     if (!WaitForResponseTimeout(CMD_ACK, &resp, 8000)) {
         PrintAndLogEx(WARNING, "timeout while waiting for reply.");
@@ -568,7 +586,7 @@ static int CmdFlashMemInfo(const char *Cmd) {
     bool is_keyok = (mbedtls_rsa_check_pubkey(rsa) == 0);
     PrintAndLogEx(
         (is_keyok) ? SUCCESS : FAILED,
-        "RRG/Iceman RSA public key check.... ( %s )",
+        "RDV4 RSA public key check.... ( %s )",
         (is_keyok) ?  _GREEN_("ok") : _RED_("fail")
     );
 
@@ -576,7 +594,7 @@ static int CmdFlashMemInfo(const char *Cmd) {
     if (verbose) {
         PrintAndLogEx(
             (is_keyok) ? SUCCESS : FAILED,
-            "RRG/Iceman RSA private key check... ( %s )",
+            "RDV4 RSA private key check... ( %s )",
             (is_keyok) ?  _GREEN_("ok") : _YELLOW_("N/A")
         );
     }
@@ -623,6 +641,11 @@ static int CmdFlashMemInfo(const char *Cmd) {
 
     // Verify (public key)
     bool is_verified = (mbedtls_rsa_pkcs1_verify(rsa, NULL, NULL, MBEDTLS_RSA_PUBLIC, MBEDTLS_MD_SHA1, 20, sha_hash, from_device) == 0);
+
+    if (got_private == false) {
+        mbedtls_rsa_free(rsa);
+        free(rsa);
+    }
 
     mbedtls_pk_free(&pkctx);
 

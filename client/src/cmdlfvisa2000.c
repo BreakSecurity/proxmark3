@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency visa 2000 tag commands
 // by iceman
@@ -44,12 +53,11 @@ static uint8_t visa_chksum(uint32_t id) {
 
 static uint8_t visa_parity(uint32_t id) {
     // 4bit parity LUT
-    uint8_t par_lut[] = {
-        0, 1, 1, 0
-        , 1, 0, 0, 1
-        , 1, 0, 0, 1
-        , 0, 1, 1, 0
+    const uint8_t par_lut[] = {
+        0, 1, 1, 0, 1, 0, 0, 1,
+        1, 0, 0, 1, 0, 1, 1, 0
     };
+
     uint8_t par = 0;
     par |= par_lut[(id >> 28) & 0xF ] << 7;
     par |= par_lut[(id >> 24) & 0xF ] << 6;
@@ -87,8 +95,8 @@ int demodVisa2k(bool verbose) {
         save_restoreGB(GRAPH_RESTORE);
         return PM3_ESOFT;
     }
-    size_t size = DemodBufferLen;
-    int ans = detectVisa2k(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int ans = detectVisa2k(g_DemodBuffer, &size);
     if (ans < 0) {
         if (ans == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - Visa2k: too few bits found");
@@ -102,13 +110,13 @@ int demodVisa2k(bool verbose) {
         save_restoreGB(GRAPH_RESTORE);
         return PM3_ESOFT;
     }
-    setDemodBuff(DemodBuffer, 96, ans);
+    setDemodBuff(g_DemodBuffer, 96, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
-    uint32_t raw3 = bytebits_to_byte(DemodBuffer + 64, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
+    uint32_t raw3 = bytebits_to_byte(g_DemodBuffer + 64, 32);
 
     // chksum
     uint8_t calc = visa_chksum(raw2);
@@ -181,7 +189,7 @@ static int CmdVisa2kClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf visa2000 clone",
                   "clone a Visa2000 tag to a T55x7, Q5/T5555 or EM4305/4469 tag.",
-                  "lf visa2000 clone --cn 112233\n"
+                  "lf visa2000 clone --cn 112233           -> encode for T55x7 tag\n"
                   "lf visa2000 clone --cn 112233 --q5      -> encode for Q5/T5555 tag\n"
                   "lf visa2000 clone --cn 112233 --em      -> encode for EM4305/4469"
                  );

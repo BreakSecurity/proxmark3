@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Verichip tag commands
 //NRZ, RF/32, 128 bits long
@@ -45,8 +54,8 @@ int demodVerichip(bool verbose) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - VERICHIP: NRZ Demod failed");
         return PM3_ESOFT;
     }
-    size_t size = DemodBufferLen;
-    int ans = detectVerichip(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int ans = detectVerichip(g_DemodBuffer, &size);
     if (ans < 0) {
         if (ans == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - VERICHIP: too few bits found");
@@ -59,14 +68,14 @@ int demodVerichip(bool verbose) {
 
         return PM3_ESOFT;
     }
-    setDemodBuff(DemodBuffer, 128, ans);
+    setDemodBuff(g_DemodBuffer, 128, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
-    uint32_t raw3 = bytebits_to_byte(DemodBuffer + 64, 32);
-    uint32_t raw4 = bytebits_to_byte(DemodBuffer + 96, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
+    uint32_t raw3 = bytebits_to_byte(g_DemodBuffer + 64, 32);
+    uint32_t raw4 = bytebits_to_byte(g_DemodBuffer + 96, 32);
 
     // preamble     then appears to have marker bits of "10"                                                                                                                                       CS?
     // 11111111001000000 10 01001100 10 00001101 10 00001101 10 00001101 10 00001101 10 00001101 10 00001101 10 00001101 10 00001101 10 10001100 10 100000001

@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency FDX-A FECAVA Destron tag commands
 //-----------------------------------------------------------------------------
@@ -37,8 +46,8 @@ int demodDestron(bool verbose) {
         return PM3_ESOFT;
     }
 
-    size_t size = DemodBufferLen;
-    int ans = detectDestron(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int ans = detectDestron(g_DemodBuffer, &size);
     if (ans < 0) {
         if (ans == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - Destron: too few bits found");
@@ -52,12 +61,12 @@ int demodDestron(bool verbose) {
         return PM3_ESOFT;
     }
 
-    setDemodBuff(DemodBuffer, DESTRON_FRAME_SIZE, ans);
+    setDemodBuff(g_DemodBuffer, DESTRON_FRAME_SIZE, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
 
     uint8_t bits[DESTRON_FRAME_SIZE - DESTRON_PREAMBLE_SIZE] = {0};
     size_t bitlen = DESTRON_FRAME_SIZE - DESTRON_PREAMBLE_SIZE;
-    memcpy(bits, DemodBuffer + DESTRON_PREAMBLE_SIZE, DESTRON_FRAME_SIZE - DESTRON_PREAMBLE_SIZE);
+    memcpy(bits, g_DemodBuffer + DESTRON_PREAMBLE_SIZE, DESTRON_FRAME_SIZE - DESTRON_PREAMBLE_SIZE);
 
     uint8_t alignPos = 0;
     uint16_t errCnt = manrawdecode(bits, &bitlen, 0, &alignPos);
@@ -136,7 +145,7 @@ static int CmdDestronClone(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_strx1("u", "uid", "<hex>", "5 bytes max"),
+        arg_str1("u", "uid", "<hex>", "5 bytes max"),
         arg_lit0(NULL, "q5", "optional - specify writing to Q5/T5555 tag"),
         arg_lit0(NULL, "em", "optional - specify writing to EM4305/4469 tag"),
         arg_param_end
@@ -173,6 +182,7 @@ static int CmdDestronClone(const char *Cmd) {
 
     // EM4305
     if (em) {
+        PrintAndLogEx(WARNING, "Beware some EM4305 tags don't support FSK and datarate = RF/50, check your tag copy!");
         blocks[0] = EM4305_DESTRON_CONFIG_BLOCK;
         snprintf(cardtype, sizeof(cardtype), "EM4305/4469");
     }

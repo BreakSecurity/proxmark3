@@ -1,11 +1,19 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2017 October, Satsuoni
-// 2017,2021 iceman
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// High frequency ISO18092 / FeliCa commands
+// High frequency ISO 18002 / FeliCa commands
 //-----------------------------------------------------------------------------
 #include "cmdhffelica.h"
 #include <stdio.h>
@@ -167,6 +175,88 @@ static int print_authentication2(void) {
     return PM3_SUCCESS;
 }
 
+static const char *felica_model_name(uint8_t rom_type, uint8_t ic_type) {
+    // source: mainly https://www.sony.net/Products/felica/business/tech-support/list.html
+    switch (ic_type) {
+        // FeliCa Standard Products:
+        case 0x46:
+            return "FeliCa Standard RC-SA21/2";
+        case 0x45:
+            return "FeliCa Standard RC-SA20/2";
+        case 0x44:
+            return "FeliCa Standard RC-SA20/1";
+        case 0x35:
+            return "FeliCa Standard RC-SA01/2";
+        case 0x32:
+            return "FeliCa Standard RC-SA00/1";
+        case 0x20:
+            return "FeliCa Standard RC-S962";
+        case 0x0D:
+            return "FeliCa Standard RC-S960";
+        case 0x0C:
+            return "FeliCa Standard RC-S954";
+        case 0x09:
+            return "FeliCa Standard RC-S953";
+        case 0x08:
+            return "FeliCa Standard RC-S952";
+        case 0x01:
+            return "FeliCa Standard RC-S915";
+        // FeliCa Lite Products:
+        case 0xF1:
+            return "FeliCa Lite-S RC-S966";
+        case 0xF0:
+            return "FeliCa Lite RC-S965";
+        // FeliCa Link Products:
+        case 0xF2:
+            return "FeliCa Link RC-S967 (Lite-S Mode or Lite-S HT Mode)";
+        case 0xE1:
+            return "FeliCa Link RC-S967 (Plug Mode)";
+        case 0xFF:
+            if (rom_type == 0xFF) { // from FeliCa Link User's Manual
+                return "FeliCa Link RC-S967 (NFC-DEP Mode)";
+            }
+            break;
+        // NFC Dynamic Tag (FeliCa Plug) Products:
+        case 0xE0:
+            return "NFC Dynamic Tag (FeliCa Plug) RC-S926";
+
+        // FeliCa Mobile Chip
+        case 0x14:
+        case 0x15:
+        case 0x16:
+        case 0x17:
+        case 0x18:
+        case 0x19:
+        case 0x1A:
+        case 0x1B:
+        case 0x1C:
+        case 0x1D:
+        case 0x1E:
+        case 0x1F:
+            return "FeliCa Mobile IC Chip V3.0";
+        case 0x10:
+        case 0x11:
+        case 0x12:
+        case 0x13:
+            return "Mobile FeliCa IC Chip V2.0";
+        case 0x06:
+        case 0x07:
+            return "Mobile FeliCa IC Chip V1.0";
+
+        // odd findings
+        case 0x00:
+            return "FeliCa Standard RC-S830";
+        case 0x02:
+            return "FeliCa Standard RC-S919";
+        case 0x0B:
+        case 0x31:
+            return "Suica card (FeliCa Standard RC-S ?)";
+        default:
+            break;
+    }
+    return "Unknown IC Type";
+}
+
 /**
  * Wait for response from pm3 or timeout.
  * Checks if receveid bytes have a valid CRC.
@@ -318,7 +408,7 @@ static int info_felica(bool verbose) {
             PrintAndLogEx(INFO, "NFCID2......... %s", sprint_hex_inrow(card.uid, sizeof(card.uid)));
             PrintAndLogEx(INFO, "Parameter");
             PrintAndLogEx(INFO, "PAD............ " _YELLOW_("%s"), sprint_hex_inrow(card.PMm, sizeof(card.PMm)));
-            PrintAndLogEx(INFO, "IC code........ %s", sprint_hex_inrow(card.iccode, sizeof(card.iccode)));
+            PrintAndLogEx(INFO, "IC code........ %s ( " _YELLOW_("%s") " )", sprint_hex_inrow(card.iccode, sizeof(card.iccode)), felica_model_name(card.iccode[0], card.iccode[1]));
             PrintAndLogEx(INFO, "MRT............ %s", sprint_hex_inrow(card.mrt, sizeof(card.mrt)));
             PrintAndLogEx(INFO, "Service code... " _YELLOW_("%s"), sprint_hex(card.servicecode, sizeof(card.servicecode)));
             PrintAndLogEx(NORMAL, "");
@@ -472,7 +562,7 @@ static int send_wr_plain(uint8_t flags, uint16_t datalen, uint8_t *data, bool ve
  * @param length in bytes of the master secret.
  * @param reverse_master_key output in which the reversed secret is stored.
  */
-static void reverse_3des_key(uint8_t *master_key, int length, uint8_t *reverse_master_key) {
+static void reverse_3des_key(const uint8_t *master_key, int length, uint8_t *reverse_master_key) {
     for (int i = 0; i < length; i++) {
         reverse_master_key[i] = master_key[(length - 1) - i];
     }
@@ -501,7 +591,7 @@ static int CmdHFFelicaAuthentication1(const char *Cmd) {
         arg_str0(NULL, "sn",  "<hex>", "number of service, 1 byte"),
         arg_str0(NULL, "scl", "<hex>", "service code list, 2 bytes"),
         arg_str0("k", "key",  "<hex>", "3des key, 16 bytes"),
-        arg_lit0("v", "verbose", "verbose helptext"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -612,7 +702,7 @@ static int CmdHFFelicaAuthentication1(const char *Cmd) {
     PrintAndLogEx(INFO, "Reader challenge (unencrypted): %s", sprint_hex(nonce, 8));
 
     // Create M1c Challenge with 3DES (3 Keys = 24, 2 Keys = 16)
-    uint8_t master_key[24];
+    uint8_t master_key[24] = {0};
     mbedtls_des3_context des3_ctx;
     mbedtls_des3_init(&des3_ctx);
 
@@ -714,7 +804,7 @@ static int CmdHFFelicaAuthentication2(const char *Cmd) {
         arg_str0("i", NULL, "<hex>", "set custom IDm"),
         arg_str0("c", "cc", "<hex>", "M3c card challenge, 8 bytes"),
         arg_str0("k", "key",  "<hex>", "3des M3c decryption key, 16 bytes"),
-        arg_lit0("v", "verbose", "verbose helptext"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -880,7 +970,7 @@ static int CmdHFFelicaWritePlain(const char *Cmd) {
         arg_str0(NULL, "scl", "<hex>", "service code list"),
         arg_str0(NULL, "bn",  "<hex>", "number of block"),
         arg_str0(NULL, "ble", "<hex>", "block list element (def 2|3 bytes)"),
-        arg_lit0("v", "verbose", "verbose helptext"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -1046,7 +1136,7 @@ static int CmdHFFelicaReadPlain(const char *Cmd) {
         arg_str0(NULL, "scl", "<hex>", "service code list"),
         arg_str0(NULL, "bn",  "<hex>", "number of block"),
         arg_str0(NULL, "ble", "<hex>", "block list element (def 2|3 bytes)"),
-        arg_lit0("v", "verbose", "verbose helptext"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -1274,7 +1364,7 @@ static int CmdHFFelicaRequestSpecificationVersion(const char *Cmd) {
         arg_param_begin,
         arg_str0("i", NULL, "<hex>", "set custom IDm"),
         arg_str0("r", NULL, "<hex>", "set custom reserve"),
-        arg_lit0("v", "verbose", "verbose helptext"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -1381,7 +1471,7 @@ static int CmdHFFelicaResetMode(const char *Cmd) {
         arg_param_begin,
         arg_str0("i", NULL, "<hex>", "set custom IDm"),
         arg_str0("r", NULL, "<hex>", "set custom reserve"),
-        arg_lit0("v", "verbose", "verbose helptext"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -1612,14 +1702,11 @@ static int CmdHFFelicaRequestService(const char *Cmd) {
 
     uint8_t datalen = 13; // length (1) + CMD (1) + IDm(8) + Node Number (1) + Node Code List (2)
 
-    uint8_t flags = FELICA_APPEND_CRC;
+    uint8_t flags = (FELICA_APPEND_CRC | FELICA_RAW);
     if (custom_IDm) {
         flags |= FELICA_NO_SELECT;
     }
 
-    if (datalen > 0) {
-        flags |= FELICA_RAW;
-    }
     // Todo activate once datalen isn't hardcoded anymore...
     if (custom_IDm == false && check_last_idm(data, datalen) == false) {
         return PM3_EINVARG;
@@ -1687,13 +1774,11 @@ static int CmdHFFelicaSniff(const char *Cmd) {
     if (payload.samples > 9999) {
         payload.samples = 9999;
         PrintAndLogEx(INFO, "Too large samples to skip value, using max value 9999");
-        return PM3_EINVARG;
     }
 
     if (payload.triggers  > 9999) {
         payload.triggers  = 9999;
         PrintAndLogEx(INFO, "Too large trigger to skip value, using max value 9999");
-        return PM3_EINVARG;
     }
 
 
@@ -1984,7 +2069,7 @@ static int CmdHFFelicaDumpLite(const char *Cmd) {
         return PM3_EOPABORTED;
     }
 
-    uint32_t tracelen = resp.oldarg[1];
+    uint16_t tracelen = resp.oldarg[1];
     if (tracelen == 0) {
         PrintAndLogEx(WARNING, "No trace data! Maybe not a FeliCa Lite card?");
         return PM3_ESOFT;
@@ -2034,7 +2119,7 @@ static int CmdHFFelicaCmdRaw(const char *Cmd) {
         arg_u64_0("n", NULL, "<dec>", "number of bits"),
         arg_lit0("r",  NULL, "do not read response"),
         arg_lit0("s",  NULL, "active signal field ON with select"),
-        arg_strx1(NULL, NULL, "<hex>", "raw bytes to send"),
+        arg_str1(NULL, NULL, "<hex>", "raw bytes to send"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);

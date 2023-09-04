@@ -1,22 +1,20 @@
-/*-
- * Copyright (C) 2010, Romain Tartiere.
- *
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by the
- * Free Software Foundation, either version 3 of the License, or (at your
- * option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
- * $Id$
- */
-
+//-----------------------------------------------------------------------------
+// Borrowed initially from https://github.com/nfc-tools/libfreefare
+// Copyright (C) 2010, Romain Tartiere.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
 /*
  * This implementation was written based on information provided by the
  * following documents:
@@ -69,8 +67,10 @@ void des_decrypt(void *out, const void *in, const void *key) {
 
 void tdes_nxp_receive(const void *in, void *out, size_t length, const void *key, unsigned char iv[8], int keymode) {
     if (length % 8) return;
-    if (keymode == 2) mbedtls_des3_set2key_dec(&ctx3, key);
-    else mbedtls_des3_set3key_dec(&ctx3, key);
+    if (keymode == 2)
+        mbedtls_des3_set2key_dec(&ctx3, key);
+    else
+        mbedtls_des3_set3key_dec(&ctx3, key);
 
     uint8_t i;
     unsigned char temp[8];
@@ -95,8 +95,10 @@ void tdes_nxp_receive(const void *in, void *out, size_t length, const void *key,
 
 void tdes_nxp_send(const void *in, void *out, size_t length, const void *key, unsigned char iv[8], int keymode) {
     if (length % 8) return;
-    if (keymode == 2) mbedtls_des3_set2key_enc(&ctx3, key);
-    else mbedtls_des3_set3key_enc(&ctx3, key);
+    if (keymode == 2)
+        mbedtls_des3_set2key_enc(&ctx3, key);
+    else
+        mbedtls_des3_set3key_enc(&ctx3, key);
 
     uint8_t i;
     uint8_t *tin = (uint8_t *) in;
@@ -342,15 +344,15 @@ size_t key_block_size(const desfirekey_t key) {
  * Size of MACing produced with the key.
  */
 static size_t key_macing_length(const desfirekey_t key) {
-    size_t mac_length = MAC_LENGTH;
+    size_t mac_length = DESFIRE_MAC_LENGTH;
     switch (key->type) {
         case T_DES:
         case T_3DES:
-            mac_length = MAC_LENGTH;
+            mac_length = DESFIRE_MAC_LENGTH;
             break;
         case T_3K3DES:
         case T_AES:
-            mac_length = CMAC_LENGTH;
+            mac_length = DESFIRE_CMAC_LENGTH;
             break;
     }
     return mac_length;
@@ -415,7 +417,7 @@ void *mifare_cryto_preprocess_data(desfiretag_t tag, void *data, size_t *nbytes,
              * integrity later.
              *
              * The only difference with CMACed data transmission is that the CMAC
-             * is not apended to the data send by the PCD to the PICC.
+             * is not appended to the data send by the PCD to the PICC.
              */
 
             append_mac = false;
@@ -461,8 +463,8 @@ void *mifare_cryto_preprocess_data(desfiretag_t tag, void *data, size_t *nbytes,
                         size_t len = maced_data_length(key, *nbytes);
                         (void)++len;
                         memcpy(res, data, *nbytes);
-                        memcpy(res + *nbytes, DESFIRE(tag)->cmac, CMAC_LENGTH);
-                        *nbytes += CMAC_LENGTH;
+                        memcpy(res + *nbytes, DESFIRE(tag)->cmac, DESFIRE_CMAC_LENGTH);
+                        *nbytes += DESFIRE_CMAC_LENGTH;
                     }
                     break;
             }
@@ -746,14 +748,14 @@ void *mifare_cryto_postprocess_data(desfiretag_t tag, void *data, size_t *nbytes
 
 
 void mifare_cypher_single_block(desfirekey_t key, uint8_t *data, uint8_t *ivect, MifareCryptoDirection direction, MifareCryptoOperation operation, size_t block_size) {
-    uint8_t ovect[MAX_CRYPTO_BLOCK_SIZE];
+    uint8_t ovect[DESFIRE_MAX_CRYPTO_BLOCK_SIZE];
     if (direction == MCD_SEND) {
         xor(ivect, data, block_size);
     } else {
         memcpy(ovect, data, block_size);
     }
 
-    uint8_t edata[MAX_CRYPTO_BLOCK_SIZE];
+    uint8_t edata[DESFIRE_MAX_CRYPTO_BLOCK_SIZE] = {0};
 
     switch (key->type) {
         case T_DES:
@@ -855,7 +857,7 @@ void mifare_cypher_blocks_chained(desfiretag_t tag, desfirekey_t key, uint8_t *i
 
         switch (DESFIRE(tag)->authentication_scheme) {
             case AS_LEGACY:
-                memset(ivect, 0, MAX_CRYPTO_BLOCK_SIZE);
+                memset(ivect, 0, DESFIRE_MAX_CRYPTO_BLOCK_SIZE);
                 break;
             case AS_NEW:
                 break;

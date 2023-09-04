@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Hardware commands
 // low-level hardware control
@@ -19,220 +27,341 @@
 #include "comms.h"
 #include "usart_defs.h"
 #include "ui.h"
+#include "fpga.h"
 #include "cmdhw.h"
 #include "cmddata.h"
 #include "commonutil.h"
 #include "pm3_cmd.h"
 #include "pmflash.h"      // rdv40validation_t
 #include "cmdflashmem.h"  // get_signature..
+#include "uart/uart.h" // configure timeout
 
 static int CmdHelp(const char *Cmd);
 
+static void lookup_chipid_short(uint32_t iChipID, uint32_t mem_used) {
+    const char *asBuff;
+    switch (iChipID) {
+        case 0x270B0A40:
+            asBuff = "AT91SAM7S512 Rev A";
+            break;
+        case 0x270B0A4F:
+            asBuff = "AT91SAM7S512 Rev B";
+            break;
+        case 0x270D0940:
+            asBuff = "AT91SAM7S256 Rev A";
+            break;
+        case 0x270B0941:
+            asBuff = "AT91SAM7S256 Rev B";
+            break;
+        case 0x270B0942:
+            asBuff = "AT91SAM7S256 Rev C";
+            break;
+        case 0x270B0943:
+            asBuff = "AT91SAM7S256 Rev D";
+            break;
+        case 0x270C0740:
+            asBuff = "AT91SAM7S128 Rev A";
+            break;
+        case 0x270A0741:
+            asBuff = "AT91SAM7S128 Rev B";
+            break;
+        case 0x270A0742:
+            asBuff = "AT91SAM7S128 Rev C";
+            break;
+        case 0x270A0743:
+            asBuff = "AT91SAM7S128 Rev D";
+            break;
+        case 0x27090540:
+            asBuff = "AT91SAM7S64 Rev A";
+            break;
+        case 0x27090543:
+            asBuff = "AT91SAM7S64 Rev B";
+            break;
+        case 0x27090544:
+            asBuff = "AT91SAM7S64 Rev C";
+            break;
+        case 0x27080342:
+            asBuff = "AT91SAM7S321 Rev A";
+            break;
+        case 0x27080340:
+            asBuff = "AT91SAM7S32 Rev A";
+            break;
+        case 0x27080341:
+            asBuff = "AT91SAM7S32 Rev B";
+            break;
+        case 0x27050241:
+            asBuff = "AT9SAM7S161 Rev A";
+            break;
+        case 0x27050240:
+            asBuff = "AT91SAM7S16 Rev A";
+            break;
+        default:
+            asBuff = "Unknown";
+            break;
+    }
+    PrintAndLogEx(NORMAL, "    MCU....... " _YELLOW_("%s"), asBuff);
+
+    uint32_t mem_avail = 0;
+    switch ((iChipID & 0xF00) >> 8) {
+        case 0:
+            mem_avail = 0;
+            break;
+        case 1:
+            mem_avail = 8;
+            break;
+        case 2:
+            mem_avail = 16;
+            break;
+        case 3:
+            mem_avail = 32;
+            break;
+        case 5:
+            mem_avail = 64;
+            break;
+        case 7:
+            mem_avail = 128;
+            break;
+        case 9:
+            mem_avail = 256;
+            break;
+        case 10:
+            mem_avail = 512;
+            break;
+        case 12:
+            mem_avail = 1024;
+            break;
+        case 14:
+            mem_avail = 2048;
+            break;
+    }
+
+    PrintAndLogEx(NORMAL, "    Memory.... " _YELLOW_("%u") " KB ( " _YELLOW_("%2.0f%%") " used )"
+                  , mem_avail
+                  , mem_avail == 0 ? 0.0f : (float)mem_used / (mem_avail * 1024) * 100
+                 );
+
+    PrintAndLogEx(NORMAL, "");
+}
+
 static void lookupChipID(uint32_t iChipID, uint32_t mem_used) {
-    char asBuff[120];
-    memset(asBuff, 0, sizeof(asBuff));
+    const char *asBuff;
     uint32_t mem_avail = 0;
     PrintAndLogEx(NORMAL, "\n [ " _YELLOW_("Hardware") " ]");
 
     switch (iChipID) {
         case 0x270B0A40:
-            sprintf(asBuff, "AT91SAM7S512 Rev A");
+            asBuff = "AT91SAM7S512 Rev A";
             break;
         case 0x270B0A4F:
-            sprintf(asBuff, "AT91SAM7S512 Rev B");
+            asBuff = "AT91SAM7S512 Rev B";
             break;
         case 0x270D0940:
-            sprintf(asBuff, "AT91SAM7S256 Rev A");
+            asBuff = "AT91SAM7S256 Rev A";
             break;
         case 0x270B0941:
-            sprintf(asBuff, "AT91SAM7S256 Rev B");
+            asBuff = "AT91SAM7S256 Rev B";
             break;
         case 0x270B0942:
-            sprintf(asBuff, "AT91SAM7S256 Rev C");
+            asBuff = "AT91SAM7S256 Rev C";
             break;
         case 0x270B0943:
-            sprintf(asBuff, "AT91SAM7S256 Rev D");
+            asBuff = "AT91SAM7S256 Rev D";
             break;
         case 0x270C0740:
-            sprintf(asBuff, "AT91SAM7S128 Rev A");
+            asBuff = "AT91SAM7S128 Rev A";
             break;
         case 0x270A0741:
-            sprintf(asBuff, "AT91SAM7S128 Rev B");
+            asBuff = "AT91SAM7S128 Rev B";
             break;
         case 0x270A0742:
-            sprintf(asBuff, "AT91SAM7S128 Rev C");
+            asBuff = "AT91SAM7S128 Rev C";
             break;
         case 0x270A0743:
-            sprintf(asBuff, "AT91SAM7S128 Rev D");
+            asBuff = "AT91SAM7S128 Rev D";
             break;
         case 0x27090540:
-            sprintf(asBuff, "AT91SAM7S64 Rev A");
+            asBuff = "AT91SAM7S64 Rev A";
             break;
         case 0x27090543:
-            sprintf(asBuff, "AT91SAM7S64 Rev B");
+            asBuff = "AT91SAM7S64 Rev B";
             break;
         case 0x27090544:
-            sprintf(asBuff, "AT91SAM7S64 Rev C");
+            asBuff = "AT91SAM7S64 Rev C";
             break;
         case 0x27080342:
-            sprintf(asBuff, "AT91SAM7S321 Rev A");
+            asBuff = "AT91SAM7S321 Rev A";
             break;
         case 0x27080340:
-            sprintf(asBuff, "AT91SAM7S32 Rev A");
+            asBuff = "AT91SAM7S32 Rev A";
             break;
         case 0x27080341:
-            sprintf(asBuff, "AT91SAM7S32 Rev B");
+            asBuff = "AT91SAM7S32 Rev B";
             break;
         case 0x27050241:
-            sprintf(asBuff, "AT9SAM7S161 Rev A");
+            asBuff = "AT9SAM7S161 Rev A";
             break;
         case 0x27050240:
-            sprintf(asBuff, "AT91SAM7S16 Rev A");
+            asBuff = "AT91SAM7S16 Rev A";
+            break;
+        default:
+            asBuff = "Unknown";
             break;
     }
     PrintAndLogEx(NORMAL, "  --= uC: " _YELLOW_("%s"), asBuff);
 
     switch ((iChipID & 0xE0) >> 5) {
         case 1:
-            sprintf(asBuff, "ARM946ES");
+            asBuff = "ARM946ES";
             break;
         case 2:
-            sprintf(asBuff, "ARM7TDMI");
+            asBuff = "ARM7TDMI";
             break;
         case 4:
-            sprintf(asBuff, "ARM920T");
+            asBuff = "ARM920T";
             break;
         case 5:
-            sprintf(asBuff, "ARM926EJS");
+            asBuff = "ARM926EJS";
+            break;
+        default:
+            asBuff = "Unknown";
             break;
     }
     PrintAndLogEx(NORMAL, "  --= Embedded Processor: %s", asBuff);
 
     switch ((iChipID & 0xF0000) >> 16) {
         case 1:
-            sprintf(asBuff, "1K bytes");
+            asBuff = "1K bytes";
             break;
         case 2:
-            sprintf(asBuff, "2K bytes");
+            asBuff = "2K bytes";
             break;
         case 3:
-            sprintf(asBuff, "6K bytes");
+            asBuff = "6K bytes";
             break;
         case 4:
-            sprintf(asBuff, "112K bytes");
+            asBuff = "112K bytes";
             break;
         case 5:
-            sprintf(asBuff, "4K bytes");
+            asBuff = "4K bytes";
             break;
         case 6:
-            sprintf(asBuff, "80K bytes");
+            asBuff = "80K bytes";
             break;
         case 7:
-            sprintf(asBuff, "160K bytes");
+            asBuff = "160K bytes";
             break;
         case 8:
-            sprintf(asBuff, "8K bytes");
+            asBuff = "8K bytes";
             break;
         case 9:
-            sprintf(asBuff, "16K bytes");
+            asBuff = "16K bytes";
             break;
         case 10:
-            sprintf(asBuff, "32K bytes");
+            asBuff = "32K bytes";
             break;
         case 11:
-            sprintf(asBuff, "64K bytes");
+            asBuff = "64K bytes";
             break;
         case 12:
-            sprintf(asBuff, "128K bytes");
+            asBuff = "128K bytes";
             break;
         case 13:
-            sprintf(asBuff, "256K bytes");
+            asBuff = "256K bytes";
             break;
         case 14:
-            sprintf(asBuff, "96K bytes");
+            asBuff = "96K bytes";
             break;
         case 15:
-            sprintf(asBuff, "512K bytes");
+            asBuff = "512K bytes";
+            break;
+        default:
+            asBuff = "Unknown";
             break;
     }
     PrintAndLogEx(NORMAL, "  --= Internal SRAM size: %s", asBuff);
 
     switch ((iChipID & 0xFF00000) >> 20) {
         case 0x19:
-            sprintf(asBuff, "AT91SAM9xx Series");
+            asBuff = "AT91SAM9xx Series";
             break;
         case 0x29:
-            sprintf(asBuff, "AT91SAM9XExx Series");
+            asBuff = "AT91SAM9XExx Series";
             break;
         case 0x34:
-            sprintf(asBuff, "AT91x34 Series");
+            asBuff = "AT91x34 Series";
             break;
         case 0x37:
-            sprintf(asBuff, "CAP7 Series");
+            asBuff = "CAP7 Series";
             break;
         case 0x39:
-            sprintf(asBuff, "CAP9 Series");
+            asBuff = "CAP9 Series";
             break;
         case 0x3B:
-            sprintf(asBuff, "CAP11 Series");
+            asBuff = "CAP11 Series";
             break;
         case 0x40:
-            sprintf(asBuff, "AT91x40 Series");
+            asBuff = "AT91x40 Series";
             break;
         case 0x42:
-            sprintf(asBuff, "AT91x42 Series");
+            asBuff = "AT91x42 Series";
             break;
         case 0x55:
-            sprintf(asBuff, "AT91x55 Series");
+            asBuff = "AT91x55 Series";
             break;
         case 0x60:
-            sprintf(asBuff, "AT91SAM7Axx Series");
+            asBuff = "AT91SAM7Axx Series";
             break;
         case 0x61:
-            sprintf(asBuff, "AT91SAM7AQxx Series");
+            asBuff = "AT91SAM7AQxx Series";
             break;
         case 0x63:
-            sprintf(asBuff, "AT91x63 Series");
+            asBuff = "AT91x63 Series";
             break;
         case 0x70:
-            sprintf(asBuff, "AT91SAM7Sxx Series");
+            asBuff = "AT91SAM7Sxx Series";
             break;
         case 0x71:
-            sprintf(asBuff, "AT91SAM7XCxx Series");
+            asBuff = "AT91SAM7XCxx Series";
             break;
         case 0x72:
-            sprintf(asBuff, "AT91SAM7SExx Series");
+            asBuff = "AT91SAM7SExx Series";
             break;
         case 0x73:
-            sprintf(asBuff, "AT91SAM7Lxx Series");
+            asBuff = "AT91SAM7Lxx Series";
             break;
         case 0x75:
-            sprintf(asBuff, "AT91SAM7Xxx Series");
+            asBuff = "AT91SAM7Xxx Series";
             break;
         case 0x92:
-            sprintf(asBuff, "AT91x92 Series");
+            asBuff = "AT91x92 Series";
             break;
         case 0xF0:
-            sprintf(asBuff, "AT75Cxx Series");
+            asBuff = "AT75Cxx Series";
+            break;
+        default:
+            asBuff = "Unknown";
             break;
     }
     PrintAndLogEx(NORMAL, "  --= Architecture identifier: %s", asBuff);
 
     switch ((iChipID & 0x70000000) >> 28) {
         case 0:
-            sprintf(asBuff, "ROM");
+            asBuff = "ROM";
             break;
         case 1:
-            sprintf(asBuff, "ROMless or on-chip Flash");
+            asBuff = "ROMless or on-chip Flash";
             break;
         case 2:
-            sprintf(asBuff, "Embedded flash memory");
+            asBuff = "Embedded flash memory";
             break;
         case 3:
-            sprintf(asBuff, "ROM and Embedded flash memory\nNVPSIZ is ROM size\nNVPSIZ2 is Flash size");
+            asBuff = "ROM and Embedded flash memory\nNVPSIZ is ROM size\nNVPSIZ2 is Flash size";
             break;
         case 4:
-            sprintf(asBuff, "SRAM emulating ROM");
+            asBuff = "SRAM emulating ROM";
+            break;
+        default:
+            asBuff = "Unknown";
             break;
     }
     switch ((iChipID & 0xF00) >> 8) {
@@ -277,34 +406,34 @@ static void lookupChipID(uint32_t iChipID, uint32_t mem_used) {
     /*
     switch ((iChipID & 0xF000) >> 12) {
         case 0:
-            sprintf(asBuff, "None");
+            asBuff = "None");
             break;
         case 1:
-            sprintf(asBuff, "8K bytes");
+            asBuff = "8K bytes");
             break;
         case 2:
-            sprintf(asBuff, "16K bytes");
+            asBuff = "16K bytes");
             break;
         case 3:
-            sprintf(asBuff, "32K bytes");
+            asBuff = "32K bytes");
             break;
         case 5:
-            sprintf(asBuff, "64K bytes");
+            asBuff = "64K bytes");
             break;
         case 7:
-            sprintf(asBuff, "128K bytes");
+            asBuff = "128K bytes");
             break;
         case 9:
-            sprintf(asBuff, "256K bytes");
+            asBuff = "256K bytes");
             break;
         case 10:
-            sprintf(asBuff, "512K bytes");
+            asBuff = "512K bytes");
             break;
         case 12:
-            sprintf(asBuff, "1024K bytes");
+            asBuff = "1024K bytes");
             break;
         case 14:
-            sprintf(asBuff, "2048K bytes");
+            asBuff = "2048K bytes");
             break;
     }
     PrintAndLogEx(NORMAL, "  --= Second nonvolatile program memory size: %s", asBuff);
@@ -316,8 +445,10 @@ static int CmdDbg(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hw dbg",
                   "Set device side debug level output.\n"
-                  "Note: option -4, this option may cause malfunction itself",
-                  "hw dbg -1\n"
+                  "Note: option `-4`, this option may cause malfunction itself by\n"
+                  "introducing delays in time critical functions like simulation or sniffing",
+                  "hw dbg    --> get current log level\n"
+                  "hw dbg -1 --> set log level to _error_\n"
                  );
 
     void *argtable[] = {
@@ -342,19 +473,55 @@ static int CmdDbg(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    uint8_t dbg = 0;
-    if (lv0)
-        dbg = 0;
-    else if (lv1)
-        dbg = 1;
-    else if (lv2)
-        dbg = 2;
-    else if (lv3)
-        dbg = 3;
-    else if (lv4)
-        dbg = 4;
+    clearCommandBuffer();
+    SendCommandNG(CMD_GET_DBGMODE, NULL, 0);
+    PacketResponseNG resp;
+    if (WaitForResponseTimeout(CMD_GET_DBGMODE, &resp, 2000) == false) {
+        PrintAndLogEx(WARNING, "Failed to get current device debug level");
+        return PM3_ETIMEOUT;
+    }
+    uint8_t curr = resp.data.asBytes[0];
 
-    SendCommandNG(CMD_SET_DBGMODE, &dbg, sizeof(dbg));
+    const char *dbglvlstr;
+    switch (curr) {
+        case DBG_NONE:
+            dbglvlstr = "none";
+            break;
+        case DBG_ERROR:
+            dbglvlstr = "error";
+            break;
+        case DBG_INFO:
+            dbglvlstr = "info";
+            break;
+        case DBG_DEBUG:
+            dbglvlstr = "debug";
+            break;
+        case DBG_EXTENDED:
+            dbglvlstr = "extended";
+            break;
+        default:
+            dbglvlstr = "unknown";
+            break;
+    }
+    PrintAndLogEx(INFO, "  Current debug log level..... %d ( " _YELLOW_("%s")" )", curr, dbglvlstr);
+
+
+    if ((lv0 + lv1 + lv2 + lv3 + lv4) == 1) {
+        uint8_t dbg = 0;
+        if (lv0)
+            dbg = 0;
+        else if (lv1)
+            dbg = 1;
+        else if (lv2)
+            dbg = 2;
+        else if (lv3)
+            dbg = 3;
+        else if (lv4)
+            dbg = 4;
+
+        clearCommandBuffer();
+        SendCommandNG(CMD_SET_DBGMODE, &dbg, sizeof(dbg));
+    }
     return PM3_SUCCESS;
 }
 
@@ -367,8 +534,8 @@ static int CmdDetectReader(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_lit0("L", "LF", "detect low frequence 125/134 kHz"),
-        arg_lit0("H", "HF", "detect high frequence 13.56 MHZ"),
+        arg_lit0("L", "LF", "detect low frequency 125/134 kHz"),
+        arg_lit0("H", "HF", "detect high frequency 13.56 MHZ"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -377,7 +544,7 @@ static int CmdDetectReader(const char *Cmd) {
     CLIParserFree(ctx);
 
     if ((lf + hf) > 1) {
-        PrintAndLogEx(INFO, "Can only set one frequence");
+        PrintAndLogEx(INFO, "Can only set one frequency");
         return PM3_EINVARG;
     }
 
@@ -427,12 +594,12 @@ static int CmdLCD(const char *Cmd) {
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
-    CLIParserFree(ctx);
 
     int r_len = 0;
     uint8_t raw[1] = {0};
     CLIGetHexWithReturn(ctx, 1, raw, &r_len);
-    int j = arg_get_int(ctx, 2);
+    int j = arg_get_int_def(ctx, 2, 1);
+    CLIParserFree(ctx);
     if (j < 1) {
         PrintAndLogEx(WARNING, "Count must be larger than zero");
         return PM3_EINVARG;
@@ -524,7 +691,7 @@ static int CmdSetDivisor(const char *Cmd) {
     CLIParserFree(ctx);
 
     if (arg < 19) {
-        PrintAndLogEx(ERR, "Divisor must be between" _YELLOW_("19") " and " _YELLOW_("255"));
+        PrintAndLogEx(ERR, "Divisor must be between " _YELLOW_("19") " and " _YELLOW_("255"));
         return PM3_EINVARG;
     }
     // 12 000 000 (12MHz)
@@ -598,7 +765,7 @@ static int CmdStandalone(const char *Cmd) {
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
-    uint8_t arg = arg_get_u32(ctx, 1);
+    uint8_t arg = arg_get_u32_def(ctx, 1, 1);
     CLIParserFree(ctx);
     clearCommandBuffer();
     SendCommandNG(CMD_STANDALONE, (uint8_t *)&arg, sizeof(arg));
@@ -624,7 +791,7 @@ static int CmdTune(const char *Cmd) {
 static int CmdVersion(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hw version",
-                  "Show version information about the connected Proxmark3",
+                  "Show version information about the client and the connected Proxmark3",
                   "hw version"
                  );
 
@@ -759,6 +926,46 @@ static int CmdTia(const char *Cmd) {
     return PM3_SUCCESS;
 }
 
+static int CmdTimeout(const char *Cmd) {
+
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "hw timeout",
+                  "Set the communication timeout on the client side",
+                  "hw timeout --> Show current timeout\n"
+                  "hw timeout -t 20 --> Set the timeout to 20ms\n"
+                  "hw timeout -t 500 --> Set the timeout to 500ms\n"
+                 );
+
+    void *argtable[] = {
+        arg_param_begin,
+        arg_int0("t", "timeout", "<dec>", "timeout in ms"),
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
+    int32_t arg = arg_get_int_def(ctx, 1, -1);
+    CLIParserFree(ctx);
+
+    uint32_t oldTimeout = uart_get_timeouts();
+
+    // timeout is not given/invalid, just show the current timeout then return
+    if (arg < 0) {
+        PrintAndLogEx(INFO, "Current communication timeout: %ums", oldTimeout);
+        return PM3_SUCCESS;
+    }
+
+    uint32_t newTimeout = arg;
+    // UART_USB_CLIENT_RX_TIMEOUT_MS is considered as the minimum required timeout.
+    if (newTimeout < UART_USB_CLIENT_RX_TIMEOUT_MS) {
+        PrintAndLogEx(WARNING, "Timeout less than %ums might cause errors.", UART_USB_CLIENT_RX_TIMEOUT_MS);
+    } else if (newTimeout > 5000) {
+        PrintAndLogEx(WARNING, "Timeout greater than 5000ms makes the client unresponsive.");
+    }
+    uart_reconfigure_timeouts(newTimeout);
+    PrintAndLogEx(INFO, "Old communication timeout: %ums", oldTimeout);
+    PrintAndLogEx(INFO, "New communication timeout: %ums", newTimeout);
+    return PM3_SUCCESS;
+}
+
 static int CmdPing(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hw ping",
@@ -773,7 +980,7 @@ static int CmdPing(const char *Cmd) {
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
-    uint32_t len = arg_get_u32(ctx, 1);
+    uint32_t len = arg_get_u32_def(ctx, 1, 32);
     CLIParserFree(ctx);
 
     if (len > PM3_CMD_DATA_SIZE)
@@ -796,7 +1003,7 @@ static int CmdPing(const char *Cmd) {
     if (WaitForResponseTimeout(CMD_PING, &resp, 1000)) {
         if (len) {
             bool error = (memcmp(data, resp.data.asBytes, len) != 0);
-            PrintAndLogEx((error) ? ERR : SUCCESS, "Ping response " _GREEN_("received") " and content is %s", error ? _RED_("NOT ok") : _GREEN_("OK"));
+            PrintAndLogEx((error) ? ERR : SUCCESS, "Ping response " _GREEN_("received") " and content () %s )", error ? _RED_("fail") : _GREEN_("ok"));
         } else {
             PrintAndLogEx(SUCCESS, "Ping response " _GREEN_("received"));
         }
@@ -836,23 +1043,23 @@ static int CmdConnect(const char *Cmd) {
 
     // default back to previous used serial port
     if (strlen(port) == 0) {
-        if (strlen(conn.serial_port_name) == 0) {
+        if (strlen(g_conn.serial_port_name) == 0) {
             PrintAndLogEx(WARNING, "Must specify a serial port");
             return PM3_EINVARG;
         }
-        memcpy(port, conn.serial_port_name, sizeof(port));
+        memcpy(port, g_conn.serial_port_name, sizeof(port));
     }
 
-    if (session.pm3_present) {
-        CloseProxmark(session.current_device);
+    if (g_session.pm3_present) {
+        CloseProxmark(g_session.current_device);
     }
 
     // 10 second timeout
-    OpenProxmark(&session.current_device, port, false, 10, false, baudrate);
+    OpenProxmark(&g_session.current_device, port, false, 10, false, baudrate);
 
-    if (session.pm3_present && (TestProxmark(session.current_device) != PM3_SUCCESS)) {
+    if (g_session.pm3_present && (TestProxmark(g_session.current_device) != PM3_SUCCESS)) {
         PrintAndLogEx(ERR, _RED_("ERROR:") " cannot communicate with the Proxmark3\n");
-        CloseProxmark(session.current_device);
+        CloseProxmark(g_session.current_device);
         return PM3_ENOTTY;
     }
     return PM3_SUCCESS;
@@ -877,6 +1084,23 @@ static int CmdBreak(const char *Cmd) {
     return PM3_SUCCESS;
 }
 
+int set_fpga_mode(uint8_t mode) {
+    if (mode < 1 || mode > 4) {
+        return PM3_EINVARG;
+    }
+    uint8_t d[] = {mode};
+    clearCommandBuffer();
+    SendCommandNG(CMD_SET_FPGAMODE, d, sizeof(d));
+    PacketResponseNG resp;
+    if (WaitForResponseTimeout(CMD_SET_FPGAMODE, &resp, 1000) == false) {
+        PrintAndLogEx(WARNING, "command execution timeout");
+        return PM3_ETIMEOUT;
+    }
+    if (resp.status != PM3_SUCCESS) {
+        PrintAndLogEx(ERR, "failed to set FPGA mode");
+    }
+    return resp.status;
+}
 
 static command_t CommandTable[] = {
     {"-------------", CmdHelp,         AlwaysAvailable, "----------------------- " _CYAN_("Hardware") " -----------------------"},
@@ -897,8 +1121,9 @@ static command_t CommandTable[] = {
     {"status",        CmdStatus,       IfPm3Present,    "Show runtime status information about the connected Proxmark3"},
     {"tearoff",       CmdTearoff,      IfPm3Present,    "Program a tearoff hook for the next command supporting tearoff"},
     {"tia",           CmdTia,          IfPm3Present,    "Trigger a Timing Interval Acquisition to re-adjust the RealTimeCounter divider"},
+    {"timeout",       CmdTimeout,      AlwaysAvailable, "Set the communication timeout on the client side"},
     {"tune",          CmdTune,         IfPm3Present,    "Measure antenna tuning"},
-    {"version",       CmdVersion,      IfPm3Present,    "Show version information about the connected Proxmark3"},
+    {"version",       CmdVersion,      AlwaysAvailable, "Show version information about the client and the connected Proxmark3, if any"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -913,7 +1138,6 @@ int CmdHW(const char *Cmd) {
     return CmdsParse(CommandTable, Cmd);
 }
 
-void pm3_version(bool verbose, bool oneliner) {
 
 #if defined(__MINGW64__)
 # define PM3CLIENTCOMPILER "MinGW-w64 "
@@ -928,113 +1152,258 @@ void pm3_version(bool verbose, bool oneliner) {
 #endif
 
 #if defined(__APPLE__) || defined(__MACH__)
-# define PM3HOSTOS " OS:OSX"
+# define PM3HOSTOS "OSX"
 #elif defined(__ANDROID__) || defined(ANDROID)
 // must be tested before __linux__
-# define PM3HOSTOS " OS:Android"
+# define PM3HOSTOS "Android"
 #elif defined(__linux__)
-# define PM3HOSTOS " OS:Linux"
+# define PM3HOSTOS "Linux"
 #elif defined(__FreeBSD__)
-# define PM3HOSTOS " OS:FreeBSD"
+# define PM3HOSTOS "FreeBSD"
 #elif defined(__NetBSD__)
-# define PM3HOSTOS " OS:NetBSD"
+# define PM3HOSTOS "NetBSD"
 #elif defined(__OpenBSD__)
-# define PM3HOSTOS " OS:OpenBSD"
+# define PM3HOSTOS "OpenBSD"
 #elif defined(__CYGWIN__)
-# define PM3HOSTOS " OS:Cygwin"
+# define PM3HOSTOS "Cygwin"
 #elif defined(_WIN64) || defined(__WIN64__)
 // must be tested before _WIN32
-# define PM3HOSTOS " OS:Windows (64b)"
+# define PM3HOSTOS "Windows (64b)"
 #elif defined(_WIN32) || defined(__WIN32__)
-# define PM3HOSTOS " OS:Windows (32b)"
+# define PM3HOSTOS "Windows (32b)"
 #else
-# define PM3HOSTOS " OS:unknown"
+# define PM3HOSTOS "unknown"
 #endif
 
 #if defined(__x86_64__)
-# define PM3HOSTARCH " ARCH:x86_64"
+# define PM3HOSTARCH "x86_64"
 #elif defined(__i386__)
-# define PM3HOSTARCH " ARCH:x86"
+# define PM3HOSTARCH "x86"
 #elif defined(__aarch64__)
-# define PM3HOSTARCH " ARCH:aarch64"
+# define PM3HOSTARCH "aarch64"
 #elif defined(__arm__)
-# define PM3HOSTARCH " ARCH:arm"
+# define PM3HOSTARCH "arm"
 #elif defined(__powerpc64__)
-# define PM3HOSTARCH " ARCH:powerpc64"
+# define PM3HOSTARCH "powerpc64"
 #elif defined(__mips__)
-# define PM3HOSTARCH " ARCH:mips"
+# define PM3HOSTARCH "mips"
 #else
-# define PM3HOSTARCH " ARCH:unknown"
+# define PM3HOSTARCH "unknown"
 #endif
+
+void pm3_version_short(void) {
+    PrintAndLogEx(NORMAL, "  [ " _CYAN_("Proxmark3 RFID instrument") " ]");
+    PrintAndLogEx(NORMAL, "");
+
+    if (g_session.pm3_present) {
+
+        PacketResponseNG resp;
+        clearCommandBuffer();
+        SendCommandNG(CMD_VERSION, NULL, 0);
+
+        if (WaitForResponseTimeout(CMD_VERSION, &resp, 1000)) {
+
+            struct p {
+                uint32_t id;
+                uint32_t section_size;
+                uint32_t versionstr_len;
+                char versionstr[PM3_CMD_DATA_SIZE - 12];
+            } PACKED;
+
+            struct p *payload = (struct p *)&resp.data.asBytes;
+
+            lookup_chipid_short(payload->id, payload->section_size);
+
+            // client
+            char temp[PM3_CMD_DATA_SIZE - 12]; // same limit as for ARM image
+            format_version_information_short(temp, sizeof(temp), &g_version_information);
+            PrintAndLogEx(NORMAL, "    Client.... %s", temp);
+
+            bool armsrc_mismatch = false;
+            char *ptr = strstr(payload->versionstr, " os: ");
+            if (ptr != NULL) {
+                ptr = strstr(ptr, "\n");
+                if ((ptr != NULL) && (strlen(g_version_information.armsrc) == 9)) {
+                    if (strncmp(ptr - 9, g_version_information.armsrc, 9) != 0) {
+                        armsrc_mismatch = true;
+                    }
+                }
+            }
+
+            // bootrom
+            ptr = strstr(payload->versionstr, " bootrom: ");
+            if (ptr != NULL) {
+                char *ptr_end = strstr(ptr, "\n");
+                if (ptr_end != NULL) {
+                    uint8_t len = ptr_end - 19 - ptr;
+                    PrintAndLogEx(NORMAL, "    Bootrom... %.*s", len, ptr + 10);
+                }
+            }
+
+            // os:
+            ptr = strstr(payload->versionstr, " os: ");
+            if (ptr != NULL) {
+                char *ptr_end = strstr(ptr, "\n");
+                if (ptr_end != NULL) {
+                    uint8_t len = ptr_end - 14 - ptr;
+                    PrintAndLogEx(NORMAL, "    OS........ %.*s", len, ptr + 5);
+                }
+            }
+
+
+            if (IfPm3Rdv4Fw()) {
+
+                bool is_genuine_rdv4 = false;
+                // validate signature data
+                rdv40_validation_t mem;
+                if (rdv4_get_signature(&mem) == PM3_SUCCESS) {
+                    if (rdv4_validate(&mem) == PM3_SUCCESS) {
+                        is_genuine_rdv4 = true;
+                    }
+                }
+
+                PrintAndLogEx(NORMAL, "    Target.... %s", (is_genuine_rdv4) ? _YELLOW_("RDV4") : _RED_("device / fw mismatch"));
+            } else {
+                PrintAndLogEx(NORMAL, "    Target.... %s", _YELLOW_("PM3 GENERIC"));
+            }
+
+            PrintAndLogEx(NORMAL, "");
+
+            if (armsrc_mismatch) {
+                PrintAndLogEx(NORMAL, "");
+                PrintAndLogEx(WARNING, " --> " _RED_("ARM firmware does not match the source at the time the client was compiled"));
+                PrintAndLogEx(WARNING, " --> Make sure to flash a correct and up-to-date version");
+            }
+        }
+    }
+    PrintAndLogEx(NORMAL, "");
+}
+
+void pm3_version(bool verbose, bool oneliner) {
+
+    char temp[PM3_CMD_DATA_SIZE - 12]; // same limit as for ARM image
 
     if (oneliner) {
         // For "proxmark3 -v", simple printf, avoid logging
-        char temp[PM3_CMD_DATA_SIZE - 12]; // same limit as for ARM image
-        FormatVersionInformation(temp, sizeof(temp), "Client: ", &version_information);
-        PrintAndLogEx(NORMAL, "%s compiled with " PM3CLIENTCOMPILER __VERSION__ PM3HOSTOS PM3HOSTARCH "\n", temp);
+        FormatVersionInformation(temp, sizeof(temp), "Client: ", &g_version_information);
+        PrintAndLogEx(NORMAL, "%s compiled with " PM3CLIENTCOMPILER __VERSION__ " OS:" PM3HOSTOS " ARCH:" PM3HOSTARCH "\n", temp);
         return;
     }
 
     if (!verbose)
         return;
 
-    PacketResponseNG resp;
-    clearCommandBuffer();
-    SendCommandNG(CMD_VERSION, NULL, 0);
+    PrintAndLogEx(NORMAL, "\n [ " _YELLOW_("Proxmark3 RFID instrument") " ]");
+    PrintAndLogEx(NORMAL, "\n [ " _YELLOW_("Client") " ]");
+    FormatVersionInformation(temp, sizeof(temp), "  ", &g_version_information);
+    PrintAndLogEx(NORMAL, "%s", temp);
+    PrintAndLogEx(NORMAL, "  compiled with............. " PM3CLIENTCOMPILER __VERSION__);
+    PrintAndLogEx(NORMAL, "  platform.................. " PM3HOSTOS " / " PM3HOSTARCH);
+#if defined(HAVE_READLINE)
+    PrintAndLogEx(NORMAL, "  Readline support.......... " _GREEN_("present"));
+#elif defined(HAVE_LINENOISE)
+    PrintAndLogEx(NORMAL, "  Linenoise support......... " _GREEN_("present"));
+#else
+    PrintAndLogEx(NORMAL, "  Readline/Linenoise support." _YELLOW_("absent"));
+#endif
+#ifdef HAVE_GUI
+    PrintAndLogEx(NORMAL, "  QT GUI support............ " _GREEN_("present"));
+#else
+    PrintAndLogEx(NORMAL, "  QT GUI support............ " _YELLOW_("absent"));
+#endif
+#ifdef HAVE_BLUEZ
+    PrintAndLogEx(NORMAL, "  native BT support......... " _GREEN_("present"));
+#else
+    PrintAndLogEx(NORMAL, "  native BT support......... " _YELLOW_("absent"));
+#endif
+#ifdef HAVE_PYTHON
+    PrintAndLogEx(NORMAL, "  Python script support..... " _GREEN_("present"));
+#else
+    PrintAndLogEx(NORMAL, "  Python script support..... " _YELLOW_("absent"));
+#endif
+#ifdef HAVE_LUA_SWIG
+    PrintAndLogEx(NORMAL, "  Lua SWIG support.......... " _GREEN_("present"));
+#else
+    PrintAndLogEx(NORMAL, "  Lua SWIG support.......... " _YELLOW_("absent"));
+#endif
+#ifdef HAVE_PYTHON_SWIG
+    PrintAndLogEx(NORMAL, "  Python SWIG support....... " _GREEN_("present"));
+#else
+    PrintAndLogEx(NORMAL, "  Python SWIG support....... " _YELLOW_("absent"));
+#endif
 
-    if (WaitForResponseTimeout(CMD_VERSION, &resp, 1000)) {
-        char temp[PM3_CMD_DATA_SIZE - 12]; // same limit as for ARM image
-        PrintAndLogEx(NORMAL, "\n [ " _CYAN_("Proxmark3 RFID instrument") " ]");
-        PrintAndLogEx(NORMAL, "\n [ " _YELLOW_("CLIENT") " ]");
-        FormatVersionInformation(temp, sizeof(temp), "  client: ", &version_information);
-        PrintAndLogEx(NORMAL, "%s", temp);
-        PrintAndLogEx(NORMAL, "  compiled with " PM3CLIENTCOMPILER __VERSION__ PM3HOSTOS PM3HOSTARCH);
+    if (g_session.pm3_present) {
+        PrintAndLogEx(NORMAL, "\n [ " _YELLOW_("Proxmark3") " ]");
 
-        PrintAndLogEx(NORMAL, "\n [ " _YELLOW_("PROXMARK3") " ]");
-        if (IfPm3Rdv4Fw()) {
+        PacketResponseNG resp;
+        clearCommandBuffer();
+        SendCommandNG(CMD_VERSION, NULL, 0);
 
-            bool is_genuine_rdv4 = false;
-            // validate signature data
-            rdv40_validation_t mem;
-            if (rdv4_get_signature(&mem) == PM3_SUCCESS) {
-                if (rdv4_validate(&mem) == PM3_SUCCESS) {
-                    is_genuine_rdv4 = true;
+        if (WaitForResponseTimeout(CMD_VERSION, &resp, 1000)) {
+            if (IfPm3Rdv4Fw()) {
+
+                bool is_genuine_rdv4 = false;
+                // validate signature data
+                rdv40_validation_t mem;
+                if (rdv4_get_signature(&mem) == PM3_SUCCESS) {
+                    if (rdv4_validate(&mem) == PM3_SUCCESS) {
+                        is_genuine_rdv4 = true;
+                    }
+                }
+
+                PrintAndLogEx(NORMAL, "  device.................... %s", (is_genuine_rdv4) ? _GREEN_("RDV4") : _RED_("device / fw mismatch"));
+                PrintAndLogEx(NORMAL, "  firmware.................. %s", (is_genuine_rdv4) ? _GREEN_("RDV4") : _YELLOW_("RDV4"));
+                PrintAndLogEx(NORMAL, "  external flash............ %s", IfPm3Flash() ? _GREEN_("present") : _YELLOW_("absent"));
+                PrintAndLogEx(NORMAL, "  smartcard reader.......... %s", IfPm3Smartcard() ? _GREEN_("present") : _YELLOW_("absent"));
+                PrintAndLogEx(NORMAL, "  FPC USART for BT add-on... %s", IfPm3FpcUsartHost() ? _GREEN_("present") : _YELLOW_("absent"));
+            } else {
+                PrintAndLogEx(NORMAL, "  firmware.................. %s", _YELLOW_("PM3 GENERIC"));
+                if (IfPm3Flash()) {
+                    PrintAndLogEx(NORMAL, "  external flash............ %s", _GREEN_("present"));
+                }
+
+                if (IfPm3FpcUsartHost()) {
+                    PrintAndLogEx(NORMAL, "  FPC USART for BT add-on... %s", _GREEN_("present"));
                 }
             }
 
-            PrintAndLogEx(NORMAL, "  device.................... %s", (is_genuine_rdv4) ? _GREEN_("RDV4") : _RED_("device / fw mismatch"));
-            PrintAndLogEx(NORMAL, "  firmware.................. %s", (is_genuine_rdv4) ? _GREEN_("RDV4") : _YELLOW_("RDV4"));
-            PrintAndLogEx(NORMAL, "  external flash............ %s", IfPm3Flash() ? _GREEN_("present") : _YELLOW_("absent"));
-            PrintAndLogEx(NORMAL, "  smartcard reader.......... %s", IfPm3Smartcard() ? _GREEN_("present") : _YELLOW_("absent"));
-            PrintAndLogEx(NORMAL, "  FPC USART for BT add-on... %s", IfPm3FpcUsartHost() ? _GREEN_("present") : _YELLOW_("absent"));
-        } else {
-            PrintAndLogEx(NORMAL, "  firmware.................. %s", _YELLOW_("PM3 GENERIC"));
-            if (IfPm3FpcUsartHost()) {
-                PrintAndLogEx(NORMAL, "  FPC USART for BT add-on... %s", _GREEN_("present"));
+            if (IfPm3FpcUsartDevFromUsb()) {
+                PrintAndLogEx(NORMAL, "  FPC USART for developer... %s", _GREEN_("present"));
+            }
+
+            PrintAndLogEx(NORMAL, "");
+
+            struct p {
+                uint32_t id;
+                uint32_t section_size;
+                uint32_t versionstr_len;
+                char versionstr[PM3_CMD_DATA_SIZE - 12];
+            } PACKED;
+
+            struct p *payload = (struct p *)&resp.data.asBytes;
+
+            bool armsrc_mismatch = false;
+            char *ptr = strstr(payload->versionstr, " os: ");
+            if (ptr != NULL) {
+                ptr = strstr(ptr, "\n");
+                if ((ptr != NULL) && (strlen(g_version_information.armsrc) == 9)) {
+                    if (strncmp(ptr - 9, g_version_information.armsrc, 9) != 0) {
+                        armsrc_mismatch = true;
+                    }
+                }
+            }
+            PrintAndLogEx(NORMAL,  payload->versionstr);
+            if (strstr(payload->versionstr, FPGA_TYPE) == NULL) {
+                PrintAndLogEx(NORMAL, "  FPGA firmware... %s", _RED_("chip mismatch"));
+            }
+
+            lookupChipID(payload->id, payload->section_size);
+            if (armsrc_mismatch) {
+                PrintAndLogEx(NORMAL, "");
+                PrintAndLogEx(WARNING, _RED_("ARM firmware does not match the source at the time the client was compiled"));
+                PrintAndLogEx(WARNING,  "Make sure to flash a correct and up-to-date version");
             }
         }
-
-        if (IfPm3FpcUsartDevFromUsb()) {
-            PrintAndLogEx(NORMAL, "  FPC USART for developer... %s", _GREEN_("present"));
-        }
-
-        PrintAndLogEx(NORMAL, "");
-
-        struct p {
-            uint32_t id;
-            uint32_t section_size;
-            uint32_t versionstr_len;
-            char versionstr[PM3_CMD_DATA_SIZE - 12];
-        } PACKED;
-
-        struct p *payload = (struct p *)&resp.data.asBytes;
-
-        PrintAndLogEx(NORMAL,  payload->versionstr);
-        if (strstr(payload->versionstr, "2s30vq100") == NULL) {
-            PrintAndLogEx(NORMAL, "  FPGA firmware... %s", _RED_("chip mismatch"));
-        }
-
-        lookupChipID(payload->id, payload->section_size);
     }
     PrintAndLogEx(NORMAL, "");
 }

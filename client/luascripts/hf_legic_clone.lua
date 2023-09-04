@@ -168,16 +168,11 @@ local function help()
     print(example)
 end
 -- read LEGIC data
-local function readlegicdata(offset, length, iv)
+local function readlegicdata(offset, len, iv)
     -- Read data
-    local command = Command:newMIX{
-                    cmd = cmds.CMD_HF_LEGIC_READER
-                    , arg1 = offset
-                    , arg2 = length
-                    , arg3 = iv
-                    , data = nil
-                    }
-    local result, err = command:sendMIX()
+    local d0 = ('%04X%04X%02X'):format(offset, len, iv)
+    local c = Command:newNG{cmd = cmds.CMD_HF_LEGIC_READER, data = d0}
+    local result, err = c:sendNG()
     if not result then return oops(err) end
     -- result is a packed data structure, data starts at offset 33
     return result
@@ -224,7 +219,7 @@ end
 -- write to file
 local function writeOutputBytes(bytes, outfile)
     local fho,err = io.open(outfile, "wb")
-    if err then print("OOps ... faild to open output-file ".. outfile); return false; end
+    if err then print("OOps ... failed to open output-file ".. outfile); return false; end
 
     for i = 1, #bytes do
         fho:write(string.char(tonumber(bytes[i], 16)))

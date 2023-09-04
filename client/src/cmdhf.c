@@ -1,13 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
-// Merlok - 2017
-// Doegox - 2019
-// Iceman - 2019
-// Piwi - 2019
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // High frequency commands
 //-----------------------------------------------------------------------------
@@ -30,16 +34,24 @@
 #include "cmdhfmfu.h"       // ULTRALIGHT/NTAG etc
 #include "cmdhfmfp.h"       // Mifare Plus
 #include "cmdhfmfdes.h"     // DESFIRE
+#include "cmdhfntag424.h"   // NTAG 424 DNA
 #include "cmdhftopaz.h"     // TOPAZ
 #include "cmdhffelica.h"    // ISO18092 / FeliCa
 #include "cmdhffido.h"      // FIDO authenticators
+#include "cmdhffudan.h"     // Fudan cards
+#include "cmdhfgallagher.h" // Gallagher DESFire cards
+#include "cmdhfksx6924.h"   // KS X 6924
 #include "cmdhfcipurse.h"   // CIPURSE transport cards
 #include "cmdhfthinfilm.h"  // Thinfilm
 #include "cmdhflto.h"       // LTO-CM
 #include "cmdhfcryptorf.h"  // CryptoRF
 #include "cmdhfseos.h"      // SEOS
 #include "cmdhfst25ta.h"    // ST25TA
+#include "cmdhftesla.h"     // Tesla
+#include "cmdhftexkom.h"    // Texkom
+#include "cmdhfvas.h"       // Value added services
 #include "cmdhfwaveshare.h" // Waveshare
+#include "cmdhfxerox.h"     // Xerox
 #include "cmdtrace.h"       // trace list
 #include "ui.h"
 #include "proxgui.h"
@@ -82,7 +94,7 @@ int CmdHFSearch(const char *Cmd) {
     PROMPT_CLEARLINE;
     PrintAndLogEx(INPLACE, " Searching for LTO-CM tag...");
     if (IfPm3Iso14443a()) {
-        if (infoLTO(false) == PM3_SUCCESS) {
+        if (reader_lto(false, false) == PM3_SUCCESS) {
             PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("LTO-CM tag") " found\n");
             res = PM3_SUCCESS;
         }
@@ -102,24 +114,6 @@ int CmdHFSearch(const char *Cmd) {
     }
 
     PROMPT_CLEARLINE;
-    PrintAndLogEx(INPLACE, " Searching for ISO15693 tag...");
-    if (IfPm3Iso15693()) {
-        if (readHF15Uid(false, false)) {
-            PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("ISO 15693 tag") " found\n");
-            res = PM3_SUCCESS;
-        }
-    }
-
-    PROMPT_CLEARLINE;
-    PrintAndLogEx(INPLACE, " Searching for iCLASS / PicoPass tag...");
-    if (IfPm3Iclass()) {
-        if (read_iclass_csn(false, false) == PM3_SUCCESS) {
-            PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("iCLASS tag / PicoPass tag") " found\n");
-            res = PM3_SUCCESS;
-        }
-    }
-
-    PROMPT_CLEARLINE;
     PrintAndLogEx(INPLACE, " Searching for LEGIC tag...");
     if (IfPm3Legicrf()) {
         if (readLegicUid(false, false) == PM3_SUCCESS) {
@@ -131,8 +125,26 @@ int CmdHFSearch(const char *Cmd) {
     PROMPT_CLEARLINE;
     PrintAndLogEx(INPLACE, " Searching for Topaz tag...");
     if (IfPm3Iso14443a()) {
-        if (readTopazUid(false) == PM3_SUCCESS) {
+        if (readTopazUid(false, false) == PM3_SUCCESS) {
             PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("Topaz tag") " found\n");
+            res = PM3_SUCCESS;
+        }
+    }
+
+    // texkom
+    PROMPT_CLEARLINE;
+    PrintAndLogEx(INPLACE, " Searching for TEXKOM tag...");
+    if (read_texkom_uid(false, false) == PM3_SUCCESS) {
+        PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("TEXKOM tag") " found\n");
+        res = PM3_SUCCESS;
+    }
+
+    // xerox
+    PROMPT_CLEARLINE;
+    PrintAndLogEx(INPLACE, " Searching for Fuji/Xerox tag...");
+    if (IfPm3Iso14443b()) {
+        if (read_xerox_uid(false, false) == PM3_SUCCESS) {
+            PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("Fuji/Xerox tag") " found\n");
             res = PM3_SUCCESS;
         }
     }
@@ -147,6 +159,28 @@ int CmdHFSearch(const char *Cmd) {
         }
     }
 
+    // OBS!  This triggers a swap to FPGA_BITSTREAM_HF_15 == 1.5sec delay
+
+    PROMPT_CLEARLINE;
+    PrintAndLogEx(INPLACE, " Searching for ISO15693 tag...");
+    if (IfPm3Iso15693()) {
+        if (readHF15Uid(false, false)) {
+            PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("ISO 15693 tag") " found\n");
+            res = PM3_SUCCESS;
+        }
+    }
+
+    PROMPT_CLEARLINE;
+    PrintAndLogEx(INPLACE, " Searching for iCLASS / PicoPass tag...");
+    if (IfPm3Iclass()) {
+        if (read_iclass_csn(false, false, false) == PM3_SUCCESS) {
+            PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("iCLASS tag / PicoPass tag") " found\n");
+            res = PM3_SUCCESS;
+        }
+    }
+
+    // OBS!  This triggers a swap to FPGA_BITSTREAM_HF_FELICA == 1.5sec delay
+
     PROMPT_CLEARLINE;
     PrintAndLogEx(INPLACE, " Searching for FeliCa tag...");
     if (IfPm3Felica()) {
@@ -155,7 +189,6 @@ int CmdHFSearch(const char *Cmd) {
             res = PM3_SUCCESS;
         }
     }
-
 
     /*
     PROMPT_CLEARLINE;
@@ -208,7 +241,7 @@ int CmdHFTune(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    barMode_t style = session.bar_mode;
+    barMode_t style = g_session.bar_mode;
     if (is_bar)
         style = STYLE_BAR;
     if (is_mix)
@@ -235,7 +268,7 @@ int CmdHFTune(const char *Cmd) {
     print_progress(0, max, style);
 
     // loop forever (till button pressed) if iter = 0 (default)
-    for (uint8_t i = 0; iter == 0 || i < iter; i++) {
+    for (uint32_t i = 0; iter == 0 || i < iter; i++) {
         if (kbd_enter_pressed()) {
             break;
         }
@@ -274,6 +307,23 @@ int CmdHFTune(const char *Cmd) {
     return PM3_SUCCESS;
 }
 
+typedef enum {
+    HF_SNOOP_SKIP_NONE = 0x00,
+    HF_SNOOP_SKIP_DROP = 0x01,
+    HF_SNOOP_SKIP_MAX = 0x02,
+    HF_SNOOP_SKIP_MIN = 0x03,
+    HF_SNOOP_SKIP_AVG = 0x04
+} HFSnoopSkipMode;
+
+const CLIParserOption HFSnoopSkipModeOpts[] = {
+    {HF_SNOOP_SKIP_NONE, "none"},
+    {HF_SNOOP_SKIP_DROP, "drop"},
+    {HF_SNOOP_SKIP_MAX,  "min"},
+    {HF_SNOOP_SKIP_MIN,  "max"},
+    {HF_SNOOP_SKIP_AVG,  "avg"},
+    {0,    NULL},
+};
+
 // Collects pars of u8,
 // uses 16bit transfers from FPGA for speed
 // Takes all available bigbuff memory
@@ -290,8 +340,10 @@ int CmdHFSniff(const char *Cmd) {
                  );
     void *argtable[] = {
         arg_param_begin,
-        arg_u64_0(NULL, "sp", "<dec>", "skip sample pairs"),
-        arg_u64_0(NULL, "st", "<dec>", "skip number of triggers"),
+        arg_u64_0(NULL, "sp",    "<dec>", "skip sample pairs"),
+        arg_u64_0(NULL, "st",    "<dec>", "skip number of triggers"),
+        arg_str0(NULL,  "smode", "[none|drop|min|max|avg]", "Skip mode. It switches on the function that applies to several samples before they saved to memory"),
+        arg_int0(NULL,  "sratio",  "<dec, ms>", "Skip ratio. It applied the function above to (ratio * 2) samples. For ratio = 1 it 2 samples."),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -299,11 +351,30 @@ int CmdHFSniff(const char *Cmd) {
     struct {
         uint32_t samplesToSkip;
         uint32_t triggersToSkip;
+        uint8_t skipMode;
+        uint8_t skipRatio;
     } PACKED params;
 
     params.samplesToSkip = arg_get_u32_def(ctx, 1, 0);
     params.triggersToSkip = arg_get_u32_def(ctx, 2, 0);
+
+    int smode = 0;
+    if (CLIGetOptionList(arg_get_str(ctx, 3), HFSnoopSkipModeOpts, &smode)) {
+        CLIParserFree(ctx);
+        return PM3_EINVARG;
+    }
+
+    params.skipMode = smode;
+    params.skipRatio = arg_get_int_def(ctx, 4, 0);
+
     CLIParserFree(ctx);
+
+    if (params.skipMode != HF_SNOOP_SKIP_NONE) {
+        PrintAndLogEx(INFO, "Skip mode. Function: %s, each: %d sample",
+                      CLIGetOptionListStr(HFSnoopSkipModeOpts, params.skipMode),
+                      params.skipRatio * 2
+                     );
+    }
 
     clearCommandBuffer();
     SendCommandNG(CMD_HF_SNIFF, (uint8_t *)&params, sizeof(params));
@@ -323,6 +394,7 @@ int CmdHFSniff(const char *Cmd) {
                 PrintAndLogEx(INFO, "Button pressed, user aborted");
                 break;
             }
+
             if (resp.status == PM3_SUCCESS) {
 
                 struct r {
@@ -340,8 +412,8 @@ int CmdHFSniff(const char *Cmd) {
                 // it reserve memory from the higher end.
                 // At the moment, sniff takes all free memory in bigbuff. If this changes,
                 // we can't start from beginning idx 0 but from that hi-to-start-of-allocated.
-                uint32_t start = pm3_capabilities.bigbuf_size - retval->len;
-                int res = getSamplesEx(start, start, false);
+                uint32_t start = g_pm3_capabilities.bigbuf_size - retval->len;
+                int res = getSamplesEx(start, start, false, true);
                 if (res != PM3_SUCCESS) {
                     PrintAndLogEx(WARNING, "failed to download samples to client");
                     return res;
@@ -356,19 +428,19 @@ int CmdHFSniff(const char *Cmd) {
 
 int handle_hf_plot(void) {
 
-    uint8_t buf[FPGA_TRACE_SIZE];
+    uint8_t buf[FPGA_TRACE_SIZE] = {0};
 
-    PacketResponseNG response;
-    if (!GetFromDevice(FPGA_MEM, buf, FPGA_TRACE_SIZE, 0, NULL, 0, &response, 4000, true)) {
+    PacketResponseNG resp;
+    if (GetFromDevice(FPGA_MEM, buf, FPGA_TRACE_SIZE, 0, NULL, 0, &resp, 4000, true) == false) {
         PrintAndLogEx(WARNING, "timeout while waiting for reply.");
         return PM3_ETIMEOUT;
     }
 
     for (size_t i = 0; i < FPGA_TRACE_SIZE; i++) {
-        GraphBuffer[i] = ((int)buf[i]) - 128;
+        g_GraphBuffer[i] = ((int)buf[i]) - 128;
     }
 
-    GraphTraceLen = FPGA_TRACE_SIZE;
+    g_GraphTraceLen = FPGA_TRACE_SIZE;
 
     ShowGraphWindow();
 
@@ -376,7 +448,7 @@ int handle_hf_plot(void) {
     CmdHpf("");
 
     setClockGrid(0, 0);
-    DemodBufferLen = 0;
+    g_DemodBufferLen = 0;
     RepaintGraphWindow();
     return PM3_SUCCESS;
 }
@@ -413,6 +485,9 @@ static command_t CommandTable[] = {
     {"emrtd",       CmdHFeMRTD,       AlwaysAvailable, "{ Machine Readable Travel Document... }"},
     {"felica",      CmdHFFelica,      AlwaysAvailable, "{ ISO18092 / FeliCa RFIDs...          }"},
     {"fido",        CmdHFFido,        AlwaysAvailable, "{ FIDO and FIDO2 authenticators...    }"},
+    {"fudan",       CmdHFFudan,       AlwaysAvailable, "{ Fudan RFIDs...                      }"},
+    {"gallagher",   CmdHFGallagher,   AlwaysAvailable, "{ Gallagher DESFire RFIDs...          }"},
+    {"ksx6924",     CmdHFKSX6924,     AlwaysAvailable, "{ KS X 6924 (T-Money, Snapper+) RFIDs }"},
     {"jooki",       CmdHF_Jooki,      AlwaysAvailable, "{ Jooki RFIDs...                      }"},
     {"iclass",      CmdHFiClass,      AlwaysAvailable, "{ ICLASS RFIDs...                     }"},
     {"legic",       CmdHFLegic,       AlwaysAvailable, "{ LEGIC RFIDs...                      }"},
@@ -421,11 +496,16 @@ static command_t CommandTable[] = {
     {"mfp",         CmdHFMFP,         AlwaysAvailable, "{ MIFARE Plus RFIDs...                }"},
     {"mfu",         CmdHFMFUltra,     AlwaysAvailable, "{ MIFARE Ultralight RFIDs...          }"},
     {"mfdes",       CmdHFMFDes,       AlwaysAvailable, "{ MIFARE Desfire RFIDs...             }"},
+    {"ntag424",     CmdHF_ntag424,    AlwaysAvailable, "{ NXP NTAG 4242 DNA RFIDs...          }"},
     {"seos",        CmdHFSeos,        AlwaysAvailable, "{ SEOS RFIDs...                       }"},
     {"st25ta",      CmdHFST25TA,      AlwaysAvailable, "{ ST25TA RFIDs...                     }"},
+    {"tesla",       CmdHFTESLA,       AlwaysAvailable, "{ TESLA Cards...                      }"},
+    {"texkom",      CmdHFTexkom,      AlwaysAvailable, "{ Texkom RFIDs...                     }"},
     {"thinfilm",    CmdHFThinfilm,    AlwaysAvailable, "{ Thinfilm RFIDs...                   }"},
     {"topaz",       CmdHFTopaz,       AlwaysAvailable, "{ TOPAZ (NFC Type 1) RFIDs...         }"},
+    {"vas",         CmdHFVAS,         AlwaysAvailable, "{ Apple Value Added Service           }"},
     {"waveshare",   CmdHFWaveshare,   AlwaysAvailable, "{ Waveshare NFC ePaper...             }"},
+    {"xerox",       CmdHFXerox,       AlwaysAvailable, "{ Fuji/Xerox cartridge RFIDs...       }"},
     {"-----------", CmdHelp,          AlwaysAvailable, "--------------------- " _CYAN_("General") " ---------------------"},
     {"help",        CmdHelp,          AlwaysAvailable, "This help"},
     {"list",        CmdHFList,        AlwaysAvailable, "List protocol data in trace buffer"},

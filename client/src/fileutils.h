@@ -1,39 +1,18 @@
-/*****************************************************************************
- * WARNING
- *
- * THIS CODE IS CREATED FOR EXPERIMENTATION AND EDUCATIONAL USE ONLY.
- *
- * USAGE OF THIS CODE IN OTHER WAYS MAY INFRINGE UPON THE INTELLECTUAL
- * PROPERTY OF OTHER PARTIES, SUCH AS INSIDE SECURE AND HID GLOBAL,
- * AND MAY EXPOSE YOU TO AN INFRINGEMENT ACTION FROM THOSE PARTIES.
- *
- * THIS CODE SHOULD NEVER BE USED TO INFRINGE PATENTS OR INTELLECTUAL PROPERTY RIGHTS.
- *
- *****************************************************************************
- *
- * This file is part of loclass. It is a reconstructon of the cipher engine
- * used in iClass, and RFID techology.
- *
- * The implementation is based on the work performed by
- * Flavio D. Garcia, Gerhard de Koning Gans, Roel Verdult and
- * Milosch Meriac in the paper "Dismantling IClass".
- *
- * Copyright (C) 2014 Martin Holst Swende
- *
- * This is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation, or, at your option, any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with loclass.  If not, see <http://www.gnu.org/licenses/>.
- *
- *
- ****************************************************************************/
+//-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
 
 #ifndef FILEUTILS_H
 #define FILEUTILS_H
@@ -68,6 +47,8 @@ typedef enum {
     jsfEM4x69,
     jsfEM4x50,
     jsfFido,
+    jsfFudan,
+    jsfTopaz,
 } JSONFileType;
 
 typedef enum {
@@ -75,13 +56,16 @@ typedef enum {
     EML,
     JSON,
     DICTIONARY,
+    MCT,
 } DumpFileType_t;
 
 int fileExists(const char *filename);
-//bool create_path(const char *dirname);
-bool setDefaultPath(savePaths_t pathIndex, const char *Path);  // set a path in the path list session.defaultPaths
+
+// set a path in the path list g_session.defaultPaths
+bool setDefaultPath(savePaths_t pathIndex, const char *path);
 
 char *newfilenamemcopy(const char *preferredName, const char *suffix);
+char *newfilenamemcopyEx(const char *preferredName, const char *suffix, savePaths_t save_path);
 
 /**
  * @brief Utility function to save data to a binary file. This method takes a preferred name, but if that
@@ -121,7 +105,7 @@ int saveFileEML(const char *preferredName, uint8_t *data, size_t datalen, size_t
  * @return 0 for ok, 1 for failz
  */
 int saveFileJSON(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, void (*callback)(json_t *));
-int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *));
+int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *), savePaths_t e_save_path);
 int saveFileJSONroot(const char *preferredName, void *root, size_t flags, bool verbose);
 int saveFileJSONrootEx(const char *preferredName, void *root, size_t flags, bool verbose, bool overwrite);
 /** STUB
@@ -134,7 +118,7 @@ int saveFileJSONrootEx(const char *preferredName, void *root, size_t flags, bool
  * @param datalen the length of the data
  * @return 0 for ok
  */
-int saveFileWAVE(const char *preferredName, int *data, size_t datalen);
+int saveFileWAVE(const char *preferredName, const int *data, size_t datalen);
 
 /** STUB
  * @brief Utility function to save PM3 data to a file. This method takes a preferred name, but if that
@@ -160,20 +144,6 @@ int createMfcKeyDump(const char *preferredName, uint8_t sectorsCnt, sector_t *e_
 
 /**
  * @brief Utility function to load data from a binary file. This method takes a preferred name.
- * E.g. dumpdata-15.bin
- *
- * @param preferredName
- * @param suffix the file suffix. Including the ".".
- * @param data The data array to store the loaded bytes from file
- * @param maxdatalen the number of bytes that your data array has
- * @param datalen the number of bytes loaded from file
- * @return PM3_SUCCESS for ok, PM3_E* for failz
-*/
-int loadFile(const char *preferredName, const char *suffix, void *data, size_t maxdatalen, size_t *datalen);
-
-
-/**
- * @brief Utility function to load data from a binary file. This method takes a preferred name.
  * E.g. dumpdata-15.bin,  tries to search for it,  and allocated memory.
  *
  * @param preferredName
@@ -193,8 +163,18 @@ int loadFile_safeEx(const char *preferredName, const char *suffix, void **pdata,
  * @param datalen the number of bytes loaded from file
  * @return 0 for ok, 1 for failz
 */
-int loadFileEML(const char *preferredName, void *data, size_t *datalen);
 int loadFileEML_safe(const char *preferredName, void **pdata, size_t *datalen);
+
+/**
+ * @brief  Utility function to load data from a textfile (MCT). This method takes a preferred name.
+ * E.g. dumpdata-15.mct
+ *
+ * @param preferredName
+ * @param data The data array to store the loaded bytes from file
+ * @param datalen the number of bytes loaded from file
+ * @return 0 for ok, 1 for failz
+*/
+int loadFileMCT_safe(const char *preferredName, void **pdata, size_t *datalen);
 
 /**
  * @brief  Utility function to load data from a JSON textfile. This method takes a preferred name.
@@ -253,6 +233,7 @@ int loadFileDICTIONARYEx(const char *preferredName, void *data, size_t maxdatale
 */
 int loadFileDICTIONARY_safe(const char *preferredName, void **pdata, uint8_t keylen, uint32_t *keycnt);
 
+int loadFileBinaryKey(const char *preferredName, const char *suffix, void **keya, void **keyb, size_t *alen, size_t *blen);
 
 typedef enum {
     MFU_DF_UNKNOWN,
@@ -281,4 +262,32 @@ int searchFile(char **foundpath, const char *pm3dir, const char *searchname, con
  * @return
  */
 DumpFileType_t getfiletype(const char *filename);
+
+
+/**
+ * @brief load dump file into a data array dynamically allocated
+ * @param fn
+ * @param pdump pointer to loaded dump
+ * @param dumplen the number of bytes loaded from dump file
+ * @param maxdumplen maximum size of data array in bytes (JSON files)
+ * @return PM3_SUCCESS if OK
+ */
+int pm3_load_dump(const char *fn, void **pdump, size_t *dumplen, size_t maxdumplen);
+
+
+/** STUB
+ * @brief Utility function to save data to three file files (BIN/EML/JSON).
+ * It also tries to save according to user preferences set dump folder paths.
+ * E.g. dumpdata.bin
+ * E.g. dumpdata.eml
+ * E.g. dumpdata.json
+
+ * @param fn
+ * @param d The binary data to write to the file
+ * @param n the length of the data
+ * @param jsft json format type for the different memory cards (MFC, MFUL, LEGIC, 14B, 15, ICLASS etc)
+ * @param blocksize
+ * @return PM3_SUCCESS if OK
+ */
+int pm3_save_dump(const char *fn, uint8_t *d, size_t n, JSONFileType jsft, size_t blocksize);
 #endif // FILEUTILS_H

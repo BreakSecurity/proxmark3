@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Honeywell NexWatch tag commands
 // PSK1 RF/16, RF/2, 128 bits long (known)
@@ -44,7 +53,7 @@ static uint8_t nexwatch_parity_swap(uint8_t parity) {
 }
 // parity check
 // from 32b hex id, 4b mode,
-static uint8_t nexwatch_parity(uint8_t hexid[5]) {
+static uint8_t nexwatch_parity(const uint8_t hexid[5]) {
     uint8_t p = 0;
     for (uint8_t i = 0; i < 5; i++) {
         p ^= NIBBLE_HIGH(hexid[i]);
@@ -72,7 +81,7 @@ static uint8_t nexwatch_checksum(uint8_t magic, uint32_t id, uint8_t parity) {
 static int nexwatch_scamble(NexWatchScramble_t action, uint32_t *id, uint32_t *scambled) {
 
     // 255 = Not used/Unknown other values are the bit offset in the ID/FC values
-    uint8_t hex_2_id [] = {
+    const uint8_t hex_2_id [] = {
         31, 27, 23, 19, 15, 11, 7, 3,
         30, 26, 22, 18, 14, 10, 6, 2,
         29, 25, 21, 17, 13, 9, 5, 1,
@@ -131,8 +140,8 @@ int demodNexWatch(bool verbose) {
         return PM3_ESOFT;
     }
     bool invert = false;
-    size_t size = DemodBufferLen;
-    int idx = detectNexWatch(DemodBuffer, &size, &invert);
+    size_t size = g_DemodBufferLen;
+    int idx = detectNexWatch(g_DemodBuffer, &size, &invert);
     if (idx < 0) {
         if (idx == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - NexWatch not enough samples");
@@ -153,42 +162,42 @@ int demodNexWatch(bool verbose) {
     // skip the 4 first bits from the nexwatch preamble identification (we use 4 extra zeros..)
     idx += 4;
 
-    setDemodBuff(DemodBuffer, size, idx);
+    setDemodBuff(g_DemodBuffer, size, idx);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (idx * g_DemodClock));
 
     if (invert) {
         PrintAndLogEx(INFO, "Inverted the demodulated data");
         for (size_t i = 0; i < size; i++)
-            DemodBuffer[i] ^= 1;
+            g_DemodBuffer[i] ^= 1;
     }
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
-    uint32_t raw3 = bytebits_to_byte(DemodBuffer + 32 + 32, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
+    uint32_t raw3 = bytebits_to_byte(g_DemodBuffer + 32 + 32, 32);
 
     // get rawid
     uint32_t rawid = 0;
     for (uint8_t k = 0; k < 4; k++) {
         for (uint8_t m = 0; m < 8; m++) {
-            rawid = (rawid << 1) | DemodBuffer[m + k + (m * 4)];
+            rawid = (rawid << 1) | g_DemodBuffer[m + k + (m * 4)];
         }
     }
 
     // descrambled id
     uint32_t cn = 0;
-    uint32_t scambled = bytebits_to_byte(DemodBuffer + 8 + 32, 32);
+    uint32_t scambled = bytebits_to_byte(g_DemodBuffer + 8 + 32, 32);
     nexwatch_scamble(DESCRAMBLE, &cn, &scambled);
 
-    uint8_t mode = bytebits_to_byte(DemodBuffer + 72, 4);
-    uint8_t parity = bytebits_to_byte(DemodBuffer + 76, 4);
-    uint8_t chk = bytebits_to_byte(DemodBuffer + 80, 8);
+    uint8_t mode = bytebits_to_byte(g_DemodBuffer + 72, 4);
+    uint8_t parity = bytebits_to_byte(g_DemodBuffer + 76, 4);
+    uint8_t chk = bytebits_to_byte(g_DemodBuffer + 80, 8);
 
     // parity check
     // from 32b hex id, 4b mode
     uint8_t hex[5] = {0};
     for (uint8_t i = 0; i < 5; i++) {
-        hex[i] = bytebits_to_byte(DemodBuffer + 8 + 32 + (i * 8), 8);
+        hex[i] = bytebits_to_byte(g_DemodBuffer + 8 + 32 + (i * 8), 8);
     }
     // mode is only 4 bits.
     hex[4] &= 0xf0;
@@ -228,12 +237,12 @@ int demodNexWatch(bool verbose) {
 
 
     if (parity == calc_parity) {
-        PrintAndLogEx(DEBUG, "          parity : %s (0x%X)", _GREEN_("ok"), parity);
+        PrintAndLogEx(DEBUG, "          parity : ( %s ) 0x%X", _GREEN_("ok"), parity);
     } else {
-        PrintAndLogEx(DEBUG, "          parity : %s (0x%X != 0x%X)", _RED_("fail"), parity, calc_parity);
+        PrintAndLogEx(DEBUG, "          parity : ( %s ) 0x%X != 0x%X", _RED_("fail"), parity, calc_parity);
     }
 
-    PrintAndLogEx(DEBUG, "        checksum : %s (0x%02X)", (m_idx < ARRAYLEN(items)) ? _GREEN_("ok") : _RED_("fail"), chk);
+    PrintAndLogEx(DEBUG, "        checksum : ( %s ) 0x%02X", (m_idx < ARRAYLEN(items)) ? _GREEN_("ok") : _RED_("fail"), chk);
 
     PrintAndLogEx(INFO, " Raw : " _YELLOW_("%08"PRIX32"%08"PRIX32"%08"PRIX32), raw1, raw2, raw3);
     return PM3_SUCCESS;
@@ -584,10 +593,10 @@ int detectNexWatch(uint8_t *dest, size_t *size, bool *invert) {
 
     size_t startIdx = 0;
 
-    if (!preambleSearch(DemodBuffer, preamble, sizeof(preamble), size, &startIdx)) {
+    if (!preambleSearch(g_DemodBuffer, preamble, sizeof(preamble), size, &startIdx)) {
         // if didn't find preamble try again inverting
         uint8_t preamble_i[28] = {1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-        if (!preambleSearch(DemodBuffer, preamble_i, sizeof(preamble_i), size, &startIdx)) return -4;
+        if (!preambleSearch(g_DemodBuffer, preamble_i, sizeof(preamble_i), size, &startIdx)) return -4;
         *invert ^= 1;
     }
 

@@ -1,11 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2020 tharexde
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// modified iceman, 2020
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency EM4x50 commands
 //-----------------------------------------------------------------------------
@@ -13,6 +19,7 @@
 #include "cliparser.h"
 #include "cmdlfem4x50.h"
 #include <ctype.h>
+#include <math.h>
 #include "cmdparser.h"    // command_t
 #include "util_posix.h"  // msclock
 #include "fileutils.h"
@@ -44,31 +51,32 @@ static void print_result(const em4x50_word_t *words, int fwr, int lwr) {
 
     for (int i = fwr; i <= lwr; i++) {
 
-        char s[50] = {0};
+        const char *s;
         switch (i) {
             case EM4X50_DEVICE_PASSWORD:
-                sprintf(s, _YELLOW_("password, write only"));
+                s = _YELLOW_("password, write only");
                 break;
             case EM4X50_PROTECTION:
-                sprintf(s, _YELLOW_("protection cfg (locked)"));
+                s = _YELLOW_("protection cfg (locked)");
                 break;
             case EM4X50_CONTROL:
-                sprintf(s, _YELLOW_("control cfg (locked)"));
+                s = _YELLOW_("control cfg (locked)");
                 break;
             case EM4X50_DEVICE_SERIAL:
-                sprintf(s, _YELLOW_("device serial number (read only)"));
+                s = _YELLOW_("device serial number (read only)");
                 break;
             case EM4X50_DEVICE_ID:
-                sprintf(s, _YELLOW_("device identification (read only)"));
+                s = _YELLOW_("device identification (read only)");
                 break;
             default:
-                sprintf(s, "user data");
+                s = "user data";
                 break;
         }
 
         char r[30] = {0};
         for (int j = 3; j >= 0; j--) {
-            sprintf(r + strlen(r), "%02x ", reflect8(words[i].byte[j]));
+            int offset = strlen(r);
+            snprintf(r + offset, sizeof(r) - offset, "%02x ", reflect8(words[i].byte[j]));
         }
 
         PrintAndLogEx(INFO, " %2i | " _GREEN_("%s") "| %s| %s",
@@ -128,35 +136,15 @@ static void print_info_result(uint8_t *data, bool verbose) {
 
 static int em4x50_load_file(const char *filename, uint8_t *data, size_t data_len, size_t *bytes_read) {
 
+    // read dump file
     uint8_t *dump = NULL;
-    int res = PM3_SUCCESS;
-    DumpFileType_t dftype = getfiletype(filename);
-    switch (dftype) {
-        case BIN: {
-            res = loadFile_safe(filename, ".bin", (void **)&dump, bytes_read);
-            break;
-        }
-        case EML: {
-            res = loadFileEML_safe(filename, (void **)&dump, bytes_read);
-            break;
-        }
-        case JSON: {
-            dump =  calloc(DUMP_FILESIZE, sizeof(uint8_t));
-            if (dump == NULL) {
-                PrintAndLogEx(ERR, "error, cannot allocate memory ");
-                return PM3_EMALLOC;
-            }
-            res = loadFileJSON(filename, (void *)dump, DUMP_FILESIZE, bytes_read, NULL);
-            break;
-        }
-        case DICTIONARY: {
-            free(dump);
-            PrintAndLogEx(ERR, "Error: Only BIN/JSON/EML formats allowed");
-            return PM3_EINVARG;
-        }
+    *bytes_read = 0;
+    int res = pm3_load_dump(filename, (void **)&dump, bytes_read, DUMP_FILESIZE);
+    if (res != PM3_SUCCESS) {
+        return res;
     }
 
-    if ((res != PM3_SUCCESS) && (*bytes_read != DUMP_FILESIZE)) {
+    if (*bytes_read != DUMP_FILESIZE) {
         free(dump);
         return PM3_EFILE;
     }
@@ -177,18 +165,24 @@ static int em4x50_load_file(const char *filename, uint8_t *data, size_t data_len
 
 static void em4x50_seteml(uint8_t *src, uint32_t offset, uint32_t numofbytes) {
 
+    PrintAndLogEx(INFO, "uploading to emulator memory");
+    PrintAndLogEx(INFO, "." NOLF);
     // fast push mode
-    conn.block_after_ACK = true;
+    g_conn.block_after_ACK = true;
     for (size_t i = offset; i < numofbytes; i += PM3_CMD_DATA_SIZE) {
 
         size_t len = MIN((numofbytes - i), PM3_CMD_DATA_SIZE);
         if (len == numofbytes - i) {
             // Disable fast mode on last packet
-            conn.block_after_ACK = false;
+            g_conn.block_after_ACK = false;
         }
         clearCommandBuffer();
         SendCommandOLD(CMD_LF_EM4X50_ESET, i, len, 0, src + i, len);
+        PrintAndLogEx(NORMAL, "." NOLF);
+        fflush(stdout);
     }
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(SUCCESS, "uploaded " _YELLOW_("%d") " bytes to emulator memory", numofbytes);
 }
 
 int CmdEM4x50ELoad(const char *Cmd) {
@@ -200,7 +194,7 @@ int CmdEM4x50ELoad(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_str1("f", "filename", "<fn>", "dump filename (bin/eml/json)"),
+        arg_str1("f", "file", "<fn>", "dump filename (bin/eml/json)"),
         arg_param_end
     };
 
@@ -220,9 +214,8 @@ int CmdEM4x50ELoad(const char *Cmd) {
     }
 
     // upload to emulator memory
-    PrintAndLogEx(INFO, "Uploading to emulator memory contents of " _YELLOW_("%s"), filename);
     em4x50_seteml(data, 0, DUMP_FILESIZE);
-
+    PrintAndLogEx(HINT, "You are ready to simulate. See " _YELLOW_("`lf em 4x50 sim -h`"));
     PrintAndLogEx(INFO, "Done!");
     return PM3_SUCCESS;
 }
@@ -237,7 +230,7 @@ int CmdEM4x50ESave(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_str0("f", "file", "<fn>", "save filename"),
+        arg_str0("f", "file", "<fn>", "specifiy filename"),
         arg_param_end
     };
 
@@ -271,9 +264,7 @@ int CmdEM4x50ESave(const char *Cmd) {
         FillFileNameByUID(fptr, (uint8_t *)&data[4 * EM4X50_DEVICE_ID], "-dump", 4);
     }
 
-    saveFile(filename, ".bin", data, DUMP_FILESIZE);
-    saveFileEML(filename, data, DUMP_FILESIZE, 4);
-    saveFileJSON(filename, jsfEM4x50, data, DUMP_FILESIZE, NULL);
+    pm3_save_dump(filename, data, DUMP_FILESIZE, jsfEM4x50, 4);
     return PM3_SUCCESS;
 }
 
@@ -353,9 +344,9 @@ int CmdEM4x50Login(const char *Cmd) {
 
     // print response
     if (resp.status == PM3_SUCCESS)
-        PrintAndLogEx(SUCCESS, "Login " _GREEN_("ok"));
+        PrintAndLogEx(SUCCESS, "Login ( " _GREEN_("ok") " )");
     else
-        PrintAndLogEx(FAILED, "Login " _RED_("failed"));
+        PrintAndLogEx(FAILED, "Login ( " _RED_("failed") " )");
 
     return resp.status;
 }
@@ -364,54 +355,118 @@ int CmdEM4x50Brute(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf em 4x50 brute",
                   "Tries to bruteforce the password of a EM4x50 card.\n"
-                  "Function can be stopped by pressing pm3 button.",
-                  "lf em 4x50 brute --first 12330000 --last 12340000   -> tries pwds from 0x12330000 to 0x1234000000\n"
+                  "Function can be stopped by pressing pm3 button.\n",
+
+                  "lf em 4x50 brute --mode range --begin 12330000 --end 12340000 -> tries pwds from 0x12330000 to 0x12340000\n"
+                  "lf em 4x50 brute --mode charset --digits --uppercase -> tries all combinations of ASCII codes for digits and uppercase letters\n"
                  );
 
     void *argtable[] = {
         arg_param_begin,
-        arg_str1(NULL, "first", "<hex>", "first password (start), 4 bytes, lsb"),
-        arg_str1(NULL, "last", "<hex>",   "last password (stop), 4 bytes, lsb"),
+        arg_str1(NULL, "mode", "<str>", "Bruteforce mode (range|charset)"),
+        arg_str0(NULL, "begin", "<hex>",   "Range mode - start of the key range"),
+        arg_str0(NULL, "end", "<hex>",   "Range mode - end of the key range"),
+        arg_lit0(NULL, "digits",  "Charset mode - include ASCII codes for digits"),
+        arg_lit0(NULL, "uppercase",  "Charset mode - include ASCII codes for uppercase letters"),
         arg_param_end
     };
 
     CLIExecWithReturn(ctx, Cmd, argtable, true);
-    int first_len = 0;
-    uint8_t first[4] = {0, 0, 0, 0};
-    CLIGetHexWithReturn(ctx, 1, first, &first_len);
-    int last_len = 0;
-    uint8_t last[4] = {0, 0, 0, 0};
-    CLIGetHexWithReturn(ctx, 2, last, &last_len);
-    CLIParserFree(ctx);
-
-    if (first_len != 4) {
-        PrintAndLogEx(FAILED, "password length must be 4 bytes");
-        return PM3_EINVARG;
-    }
-    if (last_len != 4) {
-        PrintAndLogEx(FAILED, "password length must be 4 bytes");
-        return PM3_EINVARG;
-    }
 
     em4x50_data_t etd;
-    etd.password1 = BYTES2UINT32_BE(first);
-    etd.password2 = BYTES2UINT32_BE(last);
+    memset(&etd, 0, sizeof(etd));
+
+    int mode_len = 64;
+    char mode[64];
+    CLIGetStrWithReturn(ctx, 1, (uint8_t *) mode, &mode_len);
+    PrintAndLogEx(INFO, "Chosen mode: %s", mode);
+
+    if (strcmp(mode, "range") == 0) {
+        etd.bruteforce_mode = BRUTEFORCE_MODE_RANGE;
+    } else if (strcmp(mode, "charset") == 0) {
+        etd.bruteforce_mode = BRUTEFORCE_MODE_CHARSET;
+    } else {
+        PrintAndLogEx(FAILED, "Unknown bruteforce mode: %s", mode);
+        CLIParserFree(ctx);
+        return PM3_EINVARG;
+    }
+
+    if (etd.bruteforce_mode == BRUTEFORCE_MODE_RANGE) {
+        int begin_len = 0;
+        uint8_t begin[4] = {0x0};
+        CLIGetHexWithReturn(ctx, 2, begin, &begin_len);
+
+        int end_len = 0;
+        uint8_t end[4] = {0x0};
+        CLIGetHexWithReturn(ctx, 3, end, &end_len);
+
+        if (begin_len != 4) {
+            PrintAndLogEx(FAILED, "'begin' parameter must be 4 bytes");
+            CLIParserFree(ctx);
+            return PM3_EINVARG;
+        }
+
+        if (end_len != 4) {
+            PrintAndLogEx(FAILED, "'end' parameter must be 4 bytes");
+            CLIParserFree(ctx);
+            return PM3_EINVARG;
+        }
+
+        etd.password1 = BYTES2UINT32_BE(begin);
+        etd.password2 = BYTES2UINT32_BE(end);
+    } else if (etd.bruteforce_mode == BRUTEFORCE_MODE_CHARSET) {
+        bool enable_digits = arg_get_lit(ctx, 4);
+        bool enable_uppercase = arg_get_lit(ctx, 5);
+
+        if (enable_digits)
+            etd.bruteforce_charset |= CHARSET_DIGITS;
+        if (enable_uppercase)
+            etd.bruteforce_charset |= CHARSET_UPPERCASE;
+
+        if (etd.bruteforce_charset == 0) {
+            PrintAndLogEx(FAILED, "Please enable at least one charset when using charset bruteforce mode.");
+            CLIParserFree(ctx);
+            return PM3_EINVARG;
+        }
+
+        PrintAndLogEx(INFO, "Enabled charsets: %s%s",
+                      enable_digits ? "digits " : "",
+                      enable_uppercase ? "uppercase " : "");
+
+    }
+
+    CLIParserFree(ctx);
 
     // 27 passwords/second (empirical value)
     const int speed = 27;
+    int no_iter = 0;
+
+    if (etd.bruteforce_mode == BRUTEFORCE_MODE_RANGE) {
+        no_iter = etd.password2 - etd.password1 + 1;
+        PrintAndLogEx(INFO, "Trying " _YELLOW_("%i") " passwords in range [0x%08x, 0x%08x]"
+                      , no_iter
+                      , etd.password1
+                      , etd.password2
+                     );
+    } else if (etd.bruteforce_mode == BRUTEFORCE_MODE_CHARSET) {
+        unsigned int digits = 0;
+
+        if (etd.bruteforce_charset & CHARSET_DIGITS)
+            digits += CHARSET_DIGITS_SIZE;
+
+        if (etd.bruteforce_charset & CHARSET_UPPERCASE)
+            digits += CHARSET_UPPERCASE_SIZE;
+
+        no_iter = pow(digits, 4);
+    }
 
     // print some information
-    int no_iter = etd.password2 - etd.password1 + 1;
     int dur_s = no_iter / speed;
     int dur_h = dur_s / 3600;
     int dur_m = (dur_s - dur_h * 3600) / 60;
 
     dur_s -= dur_h * 3600 + dur_m * 60;
-    PrintAndLogEx(INFO, "Trying " _YELLOW_("%i") " passwords in range [0x%08x, 0x%08x]"
-                  , no_iter
-                  , etd.password1
-                  , etd.password2
-                 );
+
     PrintAndLogEx(INFO, "Estimated duration: %ih %im %is", dur_h, dur_m, dur_s);
 
     // start
@@ -441,7 +496,7 @@ int CmdEM4x50Chk(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_str0("f", "file", "<fn>", "dictionary filename"),
+        arg_str0("f", "file", "<fn>", "specify dictionary filename"),
         arg_param_end
     };
 
@@ -570,7 +625,7 @@ int em4x50_read(em4x50_data_t *etd, em4x50_word_t *out) {
         return PM3_ESOFT;
 
     uint8_t *data = resp.data.asBytes;
-    em4x50_word_t words[EM4X50_NO_WORDS];
+    em4x50_word_t words[EM4X50_NO_WORDS] = {0};
     prepare_result(data, etd->addresses & 0xFF, (etd->addresses >> 8) & 0xFF, words);
 
     if (out != NULL)
@@ -612,7 +667,6 @@ int CmdEM4x50Read(const char *Cmd) {
 
     // init
     memset(&etd, 0x00, sizeof(em4x50_data_t));
-    etd.addr_given = false;
     etd.pwd_given = false;
     etd.addresses = (addr << 8) | addr;
     etd.addr_given = true;
@@ -644,7 +698,7 @@ int CmdEM4x50Info(const char *Cmd) {
     void *argtable[] = {
         arg_param_begin,
         arg_str0("p", "pwd", "<hex>", "password, 4 hex bytes, lsb"),
-        arg_lit0("v", "verbose", "additional output of data section"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
 
@@ -725,7 +779,8 @@ int CmdEM4x50Reader(const char *Cmd) {
                 char r[30];
                 memset(r, 0, sizeof(r));
                 for (int j = 3; j >= 0; j--) {
-                    sprintf(r + strlen(r), "%02x ", reflect8(words[i].byte[j]));
+                    int offset = strlen(r);
+                    snprintf(r + offset, sizeof(r) - offset, "%02x ", reflect8(words[i].byte[j]));
                 }
 
                 PrintAndLogEx(INFO, _GREEN_(" %s") "| %s", sprint_hex(words[i].byte, 4), r);
@@ -750,7 +805,7 @@ int CmdEM4x50Dump(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_str0("f", "file", "<fn>", "dump filename (bin/eml/json)"),
+        arg_str0("f", "file", "<fn>", "specify dump filename (bin/eml/json)"),
         arg_str0("p", "pwd", "<hex>", "password, 4 hex bytes, lsb"),
         arg_param_end
     };
@@ -803,8 +858,7 @@ int CmdEM4x50Dump(const char *Cmd) {
     // user supplied filename?
     if (fnLen == 0) {
         PrintAndLogEx(INFO, "Using UID as filename");
-        char *fptr = filename;
-        fptr += sprintf(fptr, "lf-4x50-");
+        char *fptr = filename + snprintf(filename, sizeof(filename), "lf-4x50-");
         FillFileNameByUID(fptr, words[EM4X50_DEVICE_ID].byte, "-dump", 4);
     }
 
@@ -813,9 +867,7 @@ int CmdEM4x50Dump(const char *Cmd) {
         memcpy(data + (i * 4), words[i].byte, 4);
     }
 
-    saveFile(filename, ".bin", data, sizeof(data));
-    saveFileEML(filename, data, sizeof(data), 4);
-    saveFileJSON(filename, jsfEM4x50, data, sizeof(data), NULL);
+    pm3_save_dump(filename, data, sizeof(data), jsfEM4x50, 4);
     return PM3_SUCCESS;
 }
 
@@ -957,11 +1009,11 @@ int CmdEM4x50WritePwd(const char *Cmd) {
         return PM3_SUCCESS;
 
     if (resp.status != PM3_SUCCESS) {
-        PrintAndLogEx(FAILED, "Writing password (" _RED_("failed") ")");
+        PrintAndLogEx(FAILED, "Writing password ( " _RED_("fail") " )");
         return PM3_EFAILED;
     }
 
-    PrintAndLogEx(SUCCESS, "Writing new password %s (%s)"
+    PrintAndLogEx(SUCCESS, "Writing new password %s ( %s )"
                   , sprint_hex_inrow(npwd, sizeof(npwd))
                   , _GREEN_("ok")
                  );
@@ -1010,9 +1062,9 @@ int CmdEM4x50Wipe(const char *Cmd) {
     }
 
     if (resp.status == PM3_SUCCESS) {
-        PrintAndLogEx(SUCCESS, "Resetting password to 00000000 (" _GREEN_("ok") ")");
+        PrintAndLogEx(SUCCESS, "Resetting password to 00000000 ( " _GREEN_("ok") " )");
     } else {
-        PrintAndLogEx(FAILED, "Resetting password " _RED_("failed"));
+        PrintAndLogEx(FAILED, "Resetting password ( " _RED_("failed") " )");
         return PM3_ESOFT;
     }
 
@@ -1061,7 +1113,7 @@ int CmdEM4x50Restore(const char *Cmd) {
     void *argtable[] = {
         arg_param_begin,
         arg_str0("u", "uid", "<hex>", "uid, 4 hex bytes, msb"),
-        arg_str0("f", "file", "<fn>", "dump filename (bin/eml/json)"),
+        arg_str0("f", "file", "<fn>", "specify dump filename (bin/eml/json)"),
         arg_str0("p", "pwd", "<hex>", "password, 4 hex bytes, lsb"),
         arg_param_end
     };
@@ -1102,8 +1154,7 @@ int CmdEM4x50Restore(const char *Cmd) {
 
     if (uidLen) {
         PrintAndLogEx(INFO, "Using UID as filename");
-        char *fptr = filename;
-        fptr += sprintf(fptr, "lf-4x50-");
+        char *fptr = filename + snprintf(filename, sizeof(filename), "lf-4x50-");
         FillFileNameByUID(fptr, uid, "-dump", 4);
     }
 
@@ -1175,13 +1226,26 @@ int CmdEM4x50Sim(const char *Cmd) {
     }
 
     int status = PM3_EFAILED;
-    PrintAndLogEx(INFO, "Simulating data from emulator memory");
+    PrintAndLogEx(INFO, "Starting simulating");
 
     clearCommandBuffer();
     SendCommandNG(CMD_LF_EM4X50_SIM, (uint8_t *)&password, sizeof(password));
-    PacketResponseNG resp;
 
     PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " or pm3-button to abort simulation");
+
+    PacketResponseNG resp;
+    // init to ZERO
+    resp.cmd = 0,
+    resp.length = 0,
+    resp.magic = 0,
+    resp.status = 0,
+    resp.crc = 0,
+    resp.ng = false,
+    resp.oldarg[0] = 0;
+    resp.oldarg[1] = 0;
+    resp.oldarg[2] = 0;
+    memset(resp.data.asBytes, 0, PM3_CMD_DATA_SIZE);
+
     bool keypress;
     do {
         keypress = kbd_enter_pressed();
@@ -1209,7 +1273,7 @@ int CmdEM4x50Sim(const char *Cmd) {
 static command_t CommandTable[] = {
     {"help",   CmdHelp,              AlwaysAvailable, "This help"},
     {"-----------", CmdHelp,         AlwaysAvailable, "--------------------- " _CYAN_("operations") " ---------------------"},
-    {"brute",   CmdEM4x50Brute,      IfPm3EM4x50,     "Simple bruteforce attack to find password"},
+    {"brute",   CmdEM4x50Brute,      IfPm3EM4x50,     "Bruteforce attack to find password"},
     {"chk",     CmdEM4x50Chk,        IfPm3EM4x50,     "Check passwords from dictionary"},
     {"dump",    CmdEM4x50Dump,       IfPm3EM4x50,     "Dump EM4x50 tag"},
     {"info",    CmdEM4x50Info,       IfPm3EM4x50,     "Tag information"},

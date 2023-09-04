@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Securakey tag commands
 // ASK/Manchester, RF/40, 96 bits long (unknown cs)
@@ -38,8 +47,8 @@ int demodSecurakey(bool verbose) {
     if (st)
         return PM3_ESOFT;
 
-    size_t size = DemodBufferLen;
-    int ans = detectSecurakey(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int ans = detectSecurakey(g_DemodBuffer, &size);
     if (ans < 0) {
         if (ans == -1)
             PrintAndLogEx(DEBUG, "DEBUG: Error - Securakey: too few bits found");
@@ -51,13 +60,13 @@ int demodSecurakey(bool verbose) {
             PrintAndLogEx(DEBUG, "DEBUG: Error - Securakey: ans: %d", ans);
         return PM3_ESOFT;
     }
-    setDemodBuff(DemodBuffer, 96, ans);
+    setDemodBuff(g_DemodBuffer, 96, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
-    uint32_t raw3 = bytebits_to_byte(DemodBuffer + 64, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
+    uint32_t raw3 = bytebits_to_byte(g_DemodBuffer + 64, 32);
 
     // 26 bit format
     // preamble     ??bitlen   reserved        EPx   xxxxxxxy   yyyyyyyy   yyyyyyyOP  CS?        CS2?
@@ -72,7 +81,7 @@ int demodSecurakey(bool verbose) {
     // standard wiegand parities.
     // unknown checksum 11 bits? at the end
     uint8_t bits_no_spacer[85];
-    memcpy(bits_no_spacer, DemodBuffer + 11, 85);
+    memcpy(bits_no_spacer, g_DemodBuffer + 11, 85);
 
     // remove marker bits (0's every 9th digit after preamble) (pType = 3 (always 0s))
     size = removeParity(bits_no_spacer, 0, 9, 3, 85);
@@ -103,7 +112,7 @@ int demodSecurakey(bool verbose) {
 
     PrintAndLogEx(SUCCESS, "Securakey - len: " _GREEN_("%u") " FC: " _GREEN_("0x%X")" Card: " _GREEN_("%u") ", Raw: %08X%08X%08X", bitLen, fc, cardid, raw1, raw2, raw3);
     if (bitLen <= 32)
-        PrintAndLogEx(SUCCESS, "Wiegand: " _GREEN_("%08X") " parity (%s)", (lWiegand << (bitLen / 2)) | rWiegand, parity ? _GREEN_("ok") : _RED_("fail"));
+        PrintAndLogEx(SUCCESS, "Wiegand: " _GREEN_("%08X") " parity ( %s )", (lWiegand << (bitLen / 2)) | rWiegand, parity ? _GREEN_("ok") : _RED_("fail"));
 
     if (verbose) {
         PrintAndLogEx(INFO, "\nHow the FC translates to printed FC is unknown");
@@ -162,9 +171,9 @@ static int CmdSecurakeyClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf securakey clone",
                   "clone a Securakey tag to a T55x7, Q5/T5555 or EM4305/4469 tag.",
-                  "lf securakey clone --raw 7FCB400001ADEA5344300000\n"
-                  "lf securakey clone --q5 --raw 7FCB400001ADEA5344300000 -> encode for Q5/T5555 tag\n"
-                  "lf securakey clone --em --raw 7FCB400001ADEA5344300000 -> encode for EM4305/4469"
+                  "lf securakey clone --raw 7FCB400001ADEA5344300000      -> encode for T55x7 tag\n"
+                  "lf securakey clone --raw 7FCB400001ADEA5344300000 --q5 -> encode for Q5/T5555 tag\n"
+                  "lf securakey clone --raw 7FCB400001ADEA5344300000 --em -> encode for EM4305/4469"
                  );
 
     void *argtable[] = {

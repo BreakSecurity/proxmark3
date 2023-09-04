@@ -1,24 +1,22 @@
-/*
- *
- * SecureMemory, CryptoMemory and CryptoRF library
- *
- * Copyright (C) 2010, Flavio D. Garcia, Peter van Rossum, Roel Verdult
- * and Ronny Wichers Schreur. Radboud University Nijmegen
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- */
+//-----------------------------------------------------------------------------
+// Copyright (C) 2010, Flavio D. Garcia, Peter van Rossum, Roel Verdult
+// and Ronny Wichers Schreur. Radboud University Nijmegen
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
+// SecureMemory, CryptoMemory and CryptoRF library
+//-----------------------------------------------------------------------------
 
 #include "cryptolib.h"
 #include <stdbool.h>
@@ -243,7 +241,7 @@ void sm_auth(const uint8_t *Gc, const uint8_t *Ci, const uint8_t *Q, uint8_t *Ch
 
     initialize(false, Gc, Ci, Q, 1, s);
 
-    // Generate challange answer for Tag and Reader
+    // Generate challenge answer for Tag and Reader
     for (pos = 0; pos < 8; pos++) {
         Ci_1[pos] = sm_byte(s);
         Ch[pos] = sm_byte(s);
@@ -255,7 +253,7 @@ void cm_auth(const uint8_t *Gc, const uint8_t *Ci, const uint8_t *Q, uint8_t *Ch
 
     initialize(true, Gc, Ci, Q, 3, s);
 
-    // Construct the reader-answer (challange)
+    // Construct the reader-answer (challenge)
     next_n(true, 6, 0, s);
     Ch[0] = cm_byte(s);
     for (pos = 1; pos < 8; pos++) {
@@ -282,7 +280,6 @@ void cm_auth(const uint8_t *Gc, const uint8_t *Ci, const uint8_t *Q, uint8_t *Ch
 
 static void cm_crypt(const CryptoAction ca, const uint8_t offset, const uint8_t len, const uint8_t *in, uint8_t *out, crypto_state s) {
     size_t pos;
-    uint8_t bt;
 
     next_n(true, 5, 0, s);
     next(true, offset, s);
@@ -290,7 +287,7 @@ static void cm_crypt(const CryptoAction ca, const uint8_t offset, const uint8_t 
     next(true, len, s);
     for (pos = 0; pos < len; pos++) {
         // Perform the crypto operation
-        bt = in[pos] ^ cm_byte(s);
+        uint8_t bt = in[pos] ^ cm_byte(s);
 
         // Generate output
         if (out) out[pos] = bt;

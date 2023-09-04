@@ -1,9 +1,18 @@
 //-----------------------------------------------------------------------------
-// Salvador Mendoza (salmg.net), 2020
+// Copyright (C) Salvador Mendoza (salmg.net), 2020
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Code for reading and emulating 14a technology aka MSDSal by Salvador Mendoza
 //-----------------------------------------------------------------------------
@@ -56,7 +65,7 @@ void ModInfo(void) {
 static uint8_t ppdol [255] = {0x80, 0xA8, 0x00, 0x00, 0x02, 0x83, 0x00};
 
 // Generate GET PROCESSING
-static uint8_t treatPDOL(uint8_t *apdu) {
+static uint8_t treatPDOL(const uint8_t *apdu) {
 
     uint8_t plen = 7;
 
@@ -180,7 +189,7 @@ void RunMod(void) {
     memcpy(data, visauid, 4);
 
     // to initialize the emulation
-    uint8_t tagType = 4; // 4 = ISO/IEC 14443-4 - javacard (JCOP)
+    uint8_t tagType = 11; // 11 = ISO/IEC 14443-4 - javacard (JCOP)
     tag_response_info_t *responses;
     uint32_t cuid = 0;
     uint32_t counters[3] = { 0x00, 0x00, 0x00 };
@@ -339,7 +348,7 @@ void RunMod(void) {
                 state = STATE_READ;
                 DbpString(_YELLOW_("[ ") "Initialized reading mode" _YELLOW_(" ]"));
                 DbpString("\n" _YELLOW_("!!") "Waiting for a Visa card...");
-                break;
+                continue;
             }
 
             // We need to listen to the high-frequency, peak-detected path.
@@ -368,6 +377,7 @@ void RunMod(void) {
                 // dynamic_response_info will be in charge of responses
                 dynamic_response_info.response_n = 0;
 
+                //Dbprintf("receivedCmd: %02x\n", receivedCmd);
                 // received a REQUEST
                 if (receivedCmd[0] == ISO14443A_CMD_REQA && len == 1) {
                     odd_reply = !odd_reply;
@@ -377,30 +387,35 @@ void RunMod(void) {
 
                     // received a HALT
                 } else if (receivedCmd[0] == ISO14443A_CMD_HALT && len == 4) {
-                    DbpString(_YELLOW_("+") "Received a HALT");
+                    //DbpString(_YELLOW_("+") "Received a HALT");
                     p_response = NULL;
 
                     // received a WAKEUP
                 } else if (receivedCmd[0] == ISO14443A_CMD_WUPA && len == 1) {
-                    DbpString(_YELLOW_("+") "WAKEUP Received");
+                    //DbpString(_YELLOW_("+") "WAKEUP Received");
                     prevCmd = 0;
                     p_response = &responses[RESP_INDEX_ATQA];
 
                     // received request for UID (cascade 1)
                 } else if (receivedCmd[1] == 0x20 && receivedCmd[0] == ISO14443A_CMD_ANTICOLL_OR_SELECT && len == 2) {
-                    DbpString(_YELLOW_("+") "Request for UID C1");
+                    //DbpString(_YELLOW_("+") "Request for UID C1");
                     p_response = &responses[RESP_INDEX_UIDC1];
 
                     // received a SELECT (cascade 1)
                 } else if (receivedCmd[1] == 0x70 && receivedCmd[0] == ISO14443A_CMD_ANTICOLL_OR_SELECT && len == 9) {
-                    DbpString(_YELLOW_("+") "Request for SELECT S1");
+                    //DbpString(_YELLOW_("+") "Request for SELECT S1");
                     p_response = &responses[RESP_INDEX_SAKC1];
 
                     // received a RATS request
                 } else if (receivedCmd[0] == ISO14443A_CMD_RATS && len == 4) {
                     DbpString(_YELLOW_("+") "Request for RATS");
                     prevCmd = 0;
-                    p_response = &responses[RESP_INDEX_RATS];
+                    //p_response = &responses[RESP_INDEX_RATS];
+
+                    static uint8_t rRATS[] = { 0x13, 0x78, 0x80, 0x72, 0x02, 0x80, 0x31, 0x80, 0x66, 0xb1, 0x84, 0x0c, 0x01, 0x6e, 0x01, 0x83, 0x00, 0x90, 0x00 };
+
+                    memcpy(&dynamic_response_info.response[0], rRATS, sizeof(rRATS));
+                    dynamic_response_info.response_n = sizeof(rRATS);
 
                 } else {
                     DbpString(_YELLOW_("[ ") "Card reader command" _YELLOW_(" ]"));
@@ -474,6 +489,7 @@ void RunMod(void) {
                         }
                     }
                 }
+
                 if (dynamic_response_info.response_n > 0) {
                     DbpString(_GREEN_("[ ") "Proxmark3 answer" _GREEN_(" ]"));
                     Dbhexdump(dynamic_response_info.response_n, dynamic_response_info.response, false);

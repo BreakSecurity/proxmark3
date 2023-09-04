@@ -1,11 +1,17 @@
 //-----------------------------------------------------------------------------
-// Authored by Craig Young <cyoung@tripwire.com> based on cmdlfhid.c structure
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// cmdlfhid.c is Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency AWID26/50 commands
 // FSK2a, RF/50, 96 bits (complete)
@@ -268,7 +274,8 @@ int demodAWID(bool verbose) {
     }
     free(bits);
 
-    PrintAndLogEx(DEBUG, "DEBUG: AWID idx: %d, Len: %zu Printing Demod Buffer:", idx, size);
+    PrintAndLogEx(DEBUG, "DEBUG: AWID idx: %d, Len: %zu", idx, size);
+    PrintAndLogEx(DEBUG, "DEBUG: Printing DemodBuffer:");
     if (g_debugMode) {
         printDemodBuff(0, false, false, true);
         printDemodBuff(0, false, false, false);
@@ -327,10 +334,10 @@ static int CmdAWIDClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf awid clone",
                   "clone a AWID Prox tag to a T55x7, Q5/T5555 or EM4305/4469 tag",
-                  "lf awid clone --fmt 26 --fc 123 --cn 1337\n"
-                  "lf awid clone --fmt 50 --fc 2001 --cn 13371337\n"
-                  "lf awid clone --q5 --fmt 26 --fc 123 --cn 1337   -> encode for Q5/T5555 tag\n"
-                  "lf awid clone --em --fmt 26 --fc 123 --cn 1337   -> encode for EM4305/4469"
+                  "lf awid clone --fmt 26 --fc 123 --cn 1337       -> encode for T55x7 tag\n"
+                  "lf awid clone --fmt 50 --fc 2001 --cn 13371337  -> encode long fmt for T55x7 tag\n"
+                  "lf awid clone --fmt 26 --fc 123 --cn 1337 --q5  -> encode for Q5/T5555 tag\n"
+                  "lf awid clone --fmt 26 --fc 123 --cn 1337 --em  -> encode for EM4305/4469"
                  );
 
     void *argtable[] = {
@@ -367,6 +374,7 @@ static int CmdAWIDClone(const char *Cmd) {
 
     // EM4305
     if (em) {
+        PrintAndLogEx(WARNING, "Beware some EM4305 tags don't support FSK and datarate = RF/50, check your tag copy!");
         blocks[0] = EM4305_AWID_CONFIG_BLOCK;
         snprintf(cardtype, sizeof(cardtype), "EM4305/4469");
     }
@@ -384,6 +392,14 @@ static int CmdAWIDClone(const char *Cmd) {
     blocks[1] = bytebits_to_byte(bits, 32);
     blocks[2] = bytebits_to_byte(bits + 32, 32);
     blocks[3] = bytebits_to_byte(bits + 64, 32);
+
+    // EM4305
+    if (em) {
+        // invert FSK data
+        for (uint8_t i = 1; i < ARRAYLEN(blocks) ; i++) {
+            blocks[i] = blocks[i] ^ 0xFFFFFFFF;
+        }
+    }
 
     free(bits);
 
@@ -472,7 +488,7 @@ static int CmdAWIDBrute(const char *Cmd) {
         arg_u64_1(NULL, "fc", "<dec>", "8|16bit value facility code"),
         arg_u64_0(NULL, "cn", "<dec>", "optional -  card number to start with, max 65535"),
         arg_u64_0(NULL, "delay", "<dec>", "optional - delay betweens attempts in ms. Default 1000ms"),
-        arg_lit0("v", "verbose", "verbose logging, show all tries"),
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -520,7 +536,7 @@ static int CmdAWIDBrute(const char *Cmd) {
     // main loop
     for (;;) {
 
-        if (!session.pm3_present) {
+        if (!g_session.pm3_present) {
             PrintAndLogEx(WARNING, "Device offline\n");
             return PM3_ENODATA;
         }
@@ -620,7 +636,7 @@ int getAWIDBits(uint8_t fmtlen, uint32_t fc, uint32_t cn, uint8_t *bits) {
     if (bitLen != 88)
         return PM3_ESOFT;
 
-    PrintAndLogEx(DEBUG, "awid raw bits:\n %s \n", sprint_bin(bits, bitLen));
+    PrintAndLogEx(DEBUG, "awid raw bits:\n %s \n", sprint_bytebits_bin(bits, bitLen));
 
     return PM3_SUCCESS;
 }

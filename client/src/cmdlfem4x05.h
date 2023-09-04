@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
-// 2016, 2017 marshmellow, iceman
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency EM4x05 commands
 //-----------------------------------------------------------------------------
@@ -18,6 +26,8 @@
 #define EM4305_PROT1_BLOCK 14
 #define EM4305_PROT2_BLOCK 15
 #define EM4469_PROT_BLOCK 3
+
+#define EM4X05_BITS_BUFSIZE 128
 
 // config blocks
 #define EM4305_DEFAULT_CONFIG_BLOCK      (EM4x05_SET_BITRATE(32) | EM4x05_MODULATION_MANCHESTER | EM4x05_SET_NUM_BLOCKS(4) ) // ASK/MAN , data rate 32, 4 data blocks

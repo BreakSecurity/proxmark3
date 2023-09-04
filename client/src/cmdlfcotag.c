@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency COTAG commands
 //-----------------------------------------------------------------------------
@@ -17,17 +25,21 @@
 #include "ui.h"         // PrintAndLog
 #include "ctype.h"      // tolower
 #include "cliparser.h"
+#include "commonutil.h" // reflect32
 
 static int CmdHelp(const char *Cmd);
 
-// COTAG demod should be able to use GraphBuffer,
+// COTAG demod should be able to use g_GraphBuffer,
 // when data load samples
 int demodCOTAG(bool verbose) {
     (void) verbose; // unused so far
 
     uint8_t bits[COTAG_BITS] = {0};
     size_t bitlen = COTAG_BITS;
-    memcpy(bits, DemodBuffer, COTAG_BITS);
+    memcpy(bits, g_DemodBuffer, COTAG_BITS);
+
+    uint8_t inv_bits[COTAG_BITS] = {0};
+    memcpy(inv_bits, g_DemodBuffer, COTAG_BITS);
 
     uint8_t alignPos = 0;
     uint16_t err = manrawdecode(bits, &bitlen, 1, &alignPos);
@@ -47,14 +59,38 @@ int demodCOTAG(bool verbose) {
     uint32_t raw3 = bytebits_to_byteLSBF(bits + 64, 32);
     uint32_t raw4 = bytebits_to_byteLSBF(bits + 96, 32);
 
+
     /*
     fc 161:   1010 0001 -> LSB 1000 0101
     cn 33593  1000 0011 0011 1001 -> LSB 1001 1100 1100 0001
         cccc cccc cccc cccc                     ffffffff
       0 1001 1100 1100 0001 1000 0101 0000 0000 100001010000000001111011100000011010000010000000000000000000000000000000000000000000000000000000100111001100000110000101000
         1001 1100 1100 0001                     10000101
+
+    COTAG FC/272
+    1    7    7    D    E    2    0    0    8    0    0    0    3    9    2    0    D    0    4    0000000000000
+    0001 0111 0111 1101 1110 0010 0000 0000 1000 0000 0000 0000 0011 1001 0010 0000 1101 0000 0100 0000000000000000000000000000000000000000000000000000000
+    0001 0111 0111 1101 1110 001                                0010 1001 0011      1000 0110 0100
+
     */
-    PrintAndLogEx(SUCCESS, "COTAG Found: FC %u, CN: %u Raw: %08X%08X%08X%08X", fc, cn, raw1, raw2, raw3, raw4);
+    PrintAndLogEx(SUCCESS, "COTAG Found: FC " _GREEN_("%u")", CN: " _GREEN_("%u")" Raw: %08X%08X%08X%08X", fc, cn, raw1, raw2, raw3, raw4);
+
+    bitlen = COTAG_BITS;
+    err = manrawdecode(inv_bits, &bitlen, 0, &alignPos);
+    if (err < 50) {
+        uint32_t cn_large = bytebits_to_byte(inv_bits + 1, 23);
+        cn_large = reflect32(cn_large) >> 9;
+        uint8_t a = bytebits_to_byte(inv_bits + 48, 4);
+        uint8_t b = bytebits_to_byte(inv_bits + 52, 4);
+        uint8_t c = bytebits_to_byte(inv_bits + 56, 4);
+        uint16_t fc_large = NIBBLE_LOW(c) << 8 | NIBBLE_LOW(b) << 4 | NIBBLE_LOW(a);
+
+        raw1 = bytebits_to_byte(inv_bits, 32);
+        raw2 = bytebits_to_byte(inv_bits + 32, 32);
+        raw3 = bytebits_to_byte(inv_bits + 64, 32);
+        raw4 = bytebits_to_byte(inv_bits + 96, 32);
+        PrintAndLogEx(SUCCESS, "             FC " _GREEN_("%u")", CN: " _GREEN_("%u")" Raw: %08X%08X%08X%08X", fc_large, cn_large, raw1, raw2, raw3, raw4);
+    }
     return PM3_SUCCESS;
 }
 
@@ -67,11 +103,13 @@ static int CmdCOTAGDemod(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
+        arg_lit0("v", "verbose", "verbose output"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
+    bool verbose = arg_get_lit(ctx, 1);
     CLIParserFree(ctx);
-    return demodCOTAG(true);
+    return demodCOTAG(verbose);
 }
 
 // When reading a COTAG.
@@ -125,7 +163,6 @@ static int CmdCOTAGReader(const char *Cmd) {
     int res = PM3_SUCCESS;
     while (!WaitForResponseTimeout(CMD_LF_COTAG_READ, &resp, 1000)) {
         timeout--;
-        PrintAndLogEx(NORMAL, "." NOLF);
         if (timeout == 0) {
             PrintAndLogEx(NORMAL, "");
             PrintAndLogEx(WARNING, "command execution time out");
@@ -145,13 +182,13 @@ static int CmdCOTAGReader(const char *Cmd) {
         case 0:
         case 2: {
             CmdPlot("");
-            CmdGrid("384");
+            CmdGrid("-x 384");
             getSamples(0, false);
             break;
         }
         case 1: {
-            memcpy(DemodBuffer, resp.data.asBytes, resp.length);
-            DemodBufferLen = resp.length;
+            memcpy(g_DemodBuffer, resp.data.asBytes, resp.length);
+            g_DemodBufferLen = resp.length;
             return demodCOTAG(true);
         }
     }

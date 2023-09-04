@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2021 Merlok
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 //  tests for crypto
 //-----------------------------------------------------------------------------
@@ -59,7 +67,7 @@ static bool TestISO9797M2(void) {
 }
 
 static bool TestSMI(void) {
-    CipurseContext ctx = {0};
+    CipurseContext_t ctx = {0};
     CipurseCClearContext(&ctx);
 
     bool res = (isCipurseCChannelSecuritySet(&ctx) == false);
@@ -117,7 +125,7 @@ static bool TestMIC(void) {
 
 
 static bool TestAuth(void) {
-    CipurseContext ctx = {0};
+    CipurseContext_t ctx = {0};
     CipurseCClearContext(&ctx);
 
     bool res = (isCipurseCChannelSecuritySet(&ctx) == false);
@@ -160,7 +168,7 @@ static bool TestAuth(void) {
 }
 
 static bool TestMAC(void) {
-    CipurseContext ctx = {0};
+    CipurseContext_t ctx = {0};
 
     // authentication
     CipurseCClearContext(&ctx);
@@ -212,7 +220,7 @@ static bool TestMAC(void) {
 }
 
 static bool TestEncDec(void) {
-    CipurseContext ctx = {0};
+    CipurseContext_t ctx = {0};
 
     // authentication
     CipurseCClearContext(&ctx);
@@ -259,10 +267,10 @@ static bool TestEncDec(void) {
     return res;
 }
 
-//void CipurseCAPDUReqEncode(CipurseContext *ctx, sAPDU *srcapdu, sAPDU *dstapdu, uint8_t *dstdatabuf, bool includeLe, uint8_t Le);
-//void CipurseCAPDURespDecode(CipurseContext *ctx, uint8_t *srcdata, size_t srcdatalen, uint8_t *dstdata, size_t *dstdatalen, uint16_t *sw);
+//void CipurseCAPDUReqEncode(CipurseContext_t *ctx, sAPDU_t *srcapdu, sAPDU_t *dstapdu, uint8_t *dstdatabuf, bool includeLe, uint8_t Le);
+//void CipurseCAPDURespDecode(CipurseContext_t *ctx, uint8_t *srcdata, size_t srcdatalen, uint8_t *dstdata, size_t *dstdatalen, uint16_t *sw);
 static bool TestAPDU(void) {
-    CipurseContext ctx = {0};
+    CipurseContext_t ctx = {0};
 
     // authentication
     CipurseCClearContext(&ctx);
@@ -276,8 +284,8 @@ static bool TestAPDU(void) {
     res = res && (isCipurseCChannelSecuritySet(&ctx) == true);
 
     // check APDU formatting
-    sAPDU srcAPDU = {0};
-    sAPDU dstAPDU = {0};
+    sAPDU_t srcAPDU = {0};
+    sAPDU_t dstAPDU = {0};
     uint8_t dstdata[256] = {0};
     size_t dstdatalen = 0;
 
@@ -354,7 +362,7 @@ static bool TestAPDU(void) {
 bool CIPURSETest(bool verbose) {
     bool res = true;
 
-    PrintAndLogEx(INFO, "------ " _CYAN_("CIPURSE Tests") " ------");
+    PrintAndLogEx(INFO, "------ " _CYAN_("CIPURSE tests") " ------");
 
     res = res && TestKVV();
     res = res && TestISO9797M2();

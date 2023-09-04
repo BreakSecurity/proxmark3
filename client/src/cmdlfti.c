@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency TI commands
 //-----------------------------------------------------------------------------
@@ -90,38 +98,41 @@ int demodTI(bool verbose) {
     int lowTot = 0, highTot = 0;
     int retval = PM3_ESOFT;
 
-    for (i = 0; i < GraphTraceLen - convLen; i++) {
+    if (g_GraphTraceLen < convLen) {
+        return retval;
+    }
+    for (i = 0; i < g_GraphTraceLen - convLen; i++) {
         lowSum = 0;
         highSum = 0;
 
         for (j = 0; j < lowLen; j++) {
-            lowSum += LowTone[j] * GraphBuffer[i + j];
+            lowSum += LowTone[j] * g_GraphBuffer[i + j];
         }
         for (j = 0; j < highLen; j++) {
-            highSum += HighTone[j] * GraphBuffer[i + j];
+            highSum += HighTone[j] * g_GraphBuffer[i + j];
         }
         lowSum = abs((100 * lowSum) / lowLen);
         highSum = abs((100 * highSum) / highLen);
         lowSum = (lowSum < 0) ? -lowSum : lowSum;
         highSum = (highSum < 0) ? -highSum : highSum;
 
-        GraphBuffer[i] = (highSum << 16) | lowSum;
+        g_GraphBuffer[i] = (highSum << 16) | lowSum;
     }
 
-    for (i = 0; i < GraphTraceLen - convLen - 16; i++) {
+    for (i = 0; i < g_GraphTraceLen - convLen - 16; i++) {
         lowTot = 0;
         highTot = 0;
         // 16 and 15 are f_s divided by f_l and f_h, rounded
         for (j = 0; j < 16; j++) {
-            lowTot += (GraphBuffer[i + j] & 0xffff);
+            lowTot += (g_GraphBuffer[i + j] & 0xffff);
         }
         for (j = 0; j < 15; j++) {
-            highTot += (GraphBuffer[i + j] >> 16);
+            highTot += (g_GraphBuffer[i + j] >> 16);
         }
-        GraphBuffer[i] = lowTot - highTot;
+        g_GraphBuffer[i] = lowTot - highTot;
     }
 
-    GraphTraceLen -= (convLen + 16);
+    g_GraphTraceLen -= (convLen + 16);
 
     RepaintGraphWindow();
 
@@ -143,11 +154,11 @@ int demodTI(bool verbose) {
         int dec = 0;
         // searching 17 consecutive lows
         for (j = 0; j < 17 * lowLen; j++) {
-            dec -= GraphBuffer[i + j];
+            dec -= g_GraphBuffer[i + j];
         }
         // searching 7 consecutive highs
         for (; j < 17 * lowLen + 6 * highLen; j++) {
-            dec += GraphBuffer[i + j];
+            dec += g_GraphBuffer[i + j];
         }
         if (dec > max) {
             max = dec;
@@ -157,8 +168,8 @@ int demodTI(bool verbose) {
 
     // place a marker in the buffer to visually aid location
     // of the start of sync
-    GraphBuffer[maxPos] = 800;
-    GraphBuffer[maxPos + 1] = -800;
+    g_GraphBuffer[maxPos] = 800;
+    g_GraphBuffer[maxPos + 1] = -800;
 
     // advance pointer to start of actual data stream (after 16 pre and 8 start bits)
     maxPos += 17 * lowLen;
@@ -166,8 +177,8 @@ int demodTI(bool verbose) {
 
     // place a marker in the buffer to visually aid location
     // of the end of sync
-    GraphBuffer[maxPos] = 800;
-    GraphBuffer[maxPos + 1] = -800;
+    g_GraphBuffer[maxPos] = 800;
+    g_GraphBuffer[maxPos + 1] = -800;
 
     PrintAndLogEx(DEBUG, "actual data bits start at sample %d", maxPos);
     PrintAndLogEx(DEBUG, "length %d/%d", highLen, lowLen);
@@ -180,10 +191,10 @@ int demodTI(bool verbose) {
     for (i = 0; i < ARRAYLEN(bits) - 1; i++) {
         int high = 0, low = 0;
         for (j = 0; j < lowLen; j++) {
-            low -= GraphBuffer[maxPos + j];
+            low -= g_GraphBuffer[maxPos + j];
         }
         for (j = 0; j < highLen; j++) {
-            high += GraphBuffer[maxPos + j];
+            high += g_GraphBuffer[maxPos + j];
         }
 
         if (high > low) {
@@ -203,8 +214,8 @@ int demodTI(bool verbose) {
         shift3 >>= 1;
 
         // place a marker in the buffer between bits to visually aid location
-        GraphBuffer[maxPos] = 800;
-        GraphBuffer[maxPos + 1] = -800;
+        g_GraphBuffer[maxPos] = 800;
+        g_GraphBuffer[maxPos + 1] = -800;
     }
 
     RepaintGraphWindow();
@@ -253,7 +264,7 @@ int demodTI(bool verbose) {
         init_table(CRC_KERMIT);
         uint16_t calccrc = crc16_kermit(raw, sizeof(raw));
         const char *crc_str = (calccrc == (shift2 & 0xFFFF)) ? _GREEN_("ok") : _RED_("fail");
-        PrintAndLogEx(INFO, "Tag data = %08X%08X  [%04X] (%s)", shift1, shift0, calccrc, crc_str);
+        PrintAndLogEx(INFO, "Tag data = %08X%08X  [%04X] ( %s )", shift1, shift0, calccrc, crc_str);
 
         if (calccrc != (shift2 & 0xFFFF))
             PrintAndLogEx(WARNING, "Warning: CRC mismatch, calculated %04X, got %04X", calccrc, shift2 & 0xFFFF);

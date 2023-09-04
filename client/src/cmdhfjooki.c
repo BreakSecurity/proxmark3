@@ -1,10 +1,19 @@
 //-----------------------------------------------------------------------------
-// Ultralight Code (c) 2021 Iceman
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// High frequency MIFARE ULTRALIGHT / Jooki commands
+// High frequency Jooki commands
 //-----------------------------------------------------------------------------
 #include "cmdhfjooki.h"
 #include <ctype.h>
@@ -38,7 +47,7 @@ typedef struct {
 } PACKED jooki_test_t;
 
 // sample set for selftest.
-jooki_test_t jooks[] = {
+static jooki_test_t jooks[] = {
     { {0x04, 0xDA, 0xB7, 0x6A, 0xE7, 0x4C, 0x80}, "ruxow8lnn88uyeX+", 0x01, 0x00},
     { {0x04, 0xf0, 0x22, 0xc2, 0x33, 0x5e, 0x80}, "\0", 0x01, 0x00},
     { {0x04, 0x8C, 0xEC, 0xDA, 0xF0, 0x4A, 0x80}, "ONrsVf7jX6IaSNV6", 0x01, 0x01},
@@ -51,7 +60,7 @@ jooki_test_t jooks[] = {
     { {0x04, 0x28, 0xF4, 0xDA, 0xF0, 0x4A, 0x81}, "7WzlgEzqLgwTnWNy", 0x01, 0x05},
 };
 
-jooki_figure_t jooks_figures[] = {
+static jooki_figure_t jooks_figures[] = {
     {0x01, 0x00, "Dragon", "Figurine"},
     {0x01, 0x01, "Fox", "Figurine"},
     {0x01, 0x02, "Ghost", "Figurine"},
@@ -115,8 +124,8 @@ static int jooki_lookup(uint8_t tid, uint8_t fid) {
     return -1;
 }
 
-const uint8_t jooki_secret[] = {0x20, 0x20, 0x20, 0x6D, 0x24, 0x0B, 0xEB, 0x94, 0x2C, 0x80, 0x45, 0x16};
-const uint8_t NFC_SECRET[] = { 0x03, 0x9c, 0x25, 0x6f, 0xb9, 0x2e, 0xe8, 0x08, 0x09, 0x83, 0xd9, 0x33, 0x56};
+//static const uint8_t jooki_secret[] = {0x20, 0x20, 0x20, 0x6D, 0x24, 0x0B, 0xEB, 0x94, 0x2C, 0x80, 0x45, 0x16};
+static const uint8_t nfc_secret[] = { 0x03, 0x9c, 0x25, 0x6f, 0xb9, 0x2e, 0xe8, 0x08, 0x09, 0x83, 0xd9, 0x33, 0x56};
 
 #define JOOKI_UID_LEN  7
 #define JOOKI_IV_LEN   3
@@ -135,14 +144,14 @@ static int jooki_encode(uint8_t *iv, uint8_t tid, uint8_t fid, uint8_t *uid, uin
         return PM3_EINVARG;
     }
 
-    uint8_t d[JOOKI_PLAIN_LEN] = {iv[0], iv[1], iv[2], tid, fid, uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]};
+    const uint8_t d[JOOKI_PLAIN_LEN] = {iv[0], iv[1], iv[2], tid, fid, uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]};
     uint8_t enc[JOOKI_PLAIN_LEN] = {0};
     for (uint8_t i = 0; i < JOOKI_PLAIN_LEN; i++) {
 
         if (i < 3)
-            enc[i] = d[i] ^ NFC_SECRET[i];
+            enc[i] = d[i] ^ nfc_secret[i];
         else
-            enc[i] = d[i] ^ NFC_SECRET[i] ^ d[i % 3];
+            enc[i] = d[i] ^ nfc_secret[i] ^ d[i % 3];
     }
 
     PrintAndLogEx(DEBUG, "encoded result.... %s", sprint_hex(enc, sizeof(enc)));
@@ -164,9 +173,9 @@ static int jooki_decode(uint8_t *b64, uint8_t *result) {
 
     for (uint8_t i = 0; i < JOOKI_PLAIN_LEN; i++) {
         if (i < 3)
-            result[i] = ndef[i] ^ NFC_SECRET[i];
+            result[i] = ndef[i] ^ nfc_secret[i];
         else
-            result[i] = ndef[i] ^ NFC_SECRET[i] ^ ndef[i % 3] ^ NFC_SECRET[i % 3];
+            result[i] = ndef[i] ^ nfc_secret[i] ^ ndef[i % 3] ^ nfc_secret[i % 3];
     }
     PrintAndLogEx(DEBUG, "(decode_jooki) plain......... %s", sprint_hex(result, sizeof(ndef)));
     return PM3_SUCCESS;
@@ -191,7 +200,7 @@ static int jooki_create_ndef(uint8_t *b64ndef, uint8_t *ndefrecord) {
 static void jooki_printEx(uint8_t *b64, uint8_t *iv, uint8_t tid, uint8_t fid, uint8_t *uid, bool verbose) {
     int idx = jooki_lookup(tid, fid);
 
-    PrintAndLogEx(INFO, "Encoded URL.. %s ( %s )", sprint_hex(b64, 12), b64);
+    PrintAndLogEx(INFO, "Encoded URL.. %s ( " _YELLOW_("%s") " )", sprint_hex(b64, 12), b64);
     PrintAndLogEx(INFO, "Figurine..... %02x %02x - " _GREEN_("%s, %s")
                   , tid
                   , fid
@@ -206,7 +215,7 @@ static void jooki_printEx(uint8_t *b64, uint8_t *iv, uint8_t tid, uint8_t fid, u
     PrintAndLogEx(INFO, "NDEF raw..... %s", sprint_hex_inrow(ndefmsg, sizeof(ndefmsg)));
 
     if (verbose) {
-        int res = NDEFRecordsDecodeAndPrint(ndefmsg, sizeof(ndefmsg));
+        int res = NDEFRecordsDecodeAndPrint(ndefmsg, sizeof(ndefmsg), verbose);
         if (res != PM3_SUCCESS) {
             NDEFDecodeAndPrint(ndefmsg, sizeof(ndefmsg), verbose);
         }
@@ -264,7 +273,7 @@ static int jooki_selftest(void) {
         jooki_create_ndef(b64, ndefmsg);
         PrintAndLogEx(INFO, "NDEF raw .... %s", sprint_hex(ndefmsg, sizeof(ndefmsg)));
 
-        int status = NDEFRecordsDecodeAndPrint(ndefmsg, sizeof(ndefmsg));
+        int status = NDEFRecordsDecodeAndPrint(ndefmsg, sizeof(ndefmsg), true);
         if (status != PM3_SUCCESS) {
             status = NDEFDecodeAndPrint(ndefmsg, sizeof(ndefmsg), true);
         }
@@ -516,29 +525,36 @@ static int CmdHF14AJookiSim(const char *Cmd) {
 
     // upload to emulator memory
     PrintAndLogEx(INFO, "Uploading to emulator memory");
-
     PrintAndLogEx(INFO, "." NOLF);
+
     // fast push mode
-    conn.block_after_ACK = true;
+    g_conn.block_after_ACK = true;
     uint8_t blockwidth = 4, counter = 0, blockno = 0;
+
+    // 12 is the size of the struct the fct mfEmlSetMem_xt uses to transfer to device
+    uint16_t max_avail_blocks = ((PM3_CMD_DATA_SIZE - 12) / blockwidth) * blockwidth;
+
     while (datalen) {
         if (datalen == blockwidth) {
             // Disable fast mode on last packet
-            conn.block_after_ACK = false;
+            g_conn.block_after_ACK = false;
         }
+        uint16_t chunk_size = MIN(max_avail_blocks, datalen);
+        uint16_t blocks_to_send = chunk_size / blockwidth;
 
-        if (mfEmlSetMem_xt(data + counter, blockno, 1, blockwidth) != PM3_SUCCESS) {
+        if (mfEmlSetMem_xt(data + counter, blockno, blocks_to_send, blockwidth) != PM3_SUCCESS) {
             PrintAndLogEx(FAILED, "Cant set emul block: %3d", blockno);
             free(data);
             return PM3_ESOFT;
         }
+        blockno += blocks_to_send;
+        counter += chunk_size;
+        datalen -= chunk_size;
         PrintAndLogEx(NORMAL, "." NOLF);
         fflush(stdout);
-        blockno++;
-        counter += blockwidth;
-        datalen -= blockwidth;
     }
-    PrintAndLogEx(NORMAL, "\n");
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(SUCCESS, "uploaded " _YELLOW_("%d") " bytes to emulator memory", counter);
 
     struct {
         uint8_t tagtype;
@@ -557,6 +573,8 @@ static int CmdHF14AJookiSim(const char *Cmd) {
     SendCommandNG(CMD_HF_ISO14443A_SIMULATE, (uint8_t *)&payload, sizeof(payload));
     PacketResponseNG resp;
 
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(SUCCESS, "Starting simulating");
     PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " or pm3-button to abort simulation");
     for (;;) {
         if (kbd_enter_pressed()) {
@@ -565,15 +583,15 @@ static int CmdHF14AJookiSim(const char *Cmd) {
             break;
         }
 
-        if (WaitForResponseTimeout(CMD_HF_MIFARE_SIMULATE, &resp, 1500) == 0)
+        if (WaitForResponseTimeout(CMD_HF_MIFARE_SIMULATE, &resp, 1500) == false)
             continue;
 
         if (resp.status != PM3_SUCCESS)
             break;
     }
     free(data);
-    PrintAndLogEx(INFO, "Done");
     PrintAndLogEx(HINT, "Try `" _YELLOW_("hf 14a list") "` to view trace log");
+    PrintAndLogEx(INFO, "Done!");
     return PM3_SUCCESS;
 }
 

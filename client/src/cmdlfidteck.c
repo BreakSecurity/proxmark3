@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Iceman,
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Idteck tag commands
 // PSK1,  clk 32,  2 data blocks
@@ -33,10 +41,10 @@ int demodIdteck(bool verbose) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - Idteck PSKDemod failed");
         return PM3_ESOFT;
     }
-    size_t size = DemodBufferLen;
+    size_t size = g_DemodBufferLen;
 
     //get binary from PSK1 wave
-    int idx = detectIdteck(DemodBuffer, &size);
+    int idx = detectIdteck(g_DemodBuffer, &size);
     if (idx < 0) {
 
         if (idx == -1)
@@ -55,7 +63,7 @@ int demodIdteck(bool verbose) {
             PrintAndLogEx(DEBUG, "DEBUG: Error - Idteck PSKDemod failed");
             return PM3_ESOFT;
         }
-        idx = detectIdteck(DemodBuffer, &size);
+        idx = detectIdteck(g_DemodBuffer, &size);
         if (idx < 0) {
 
             if (idx == -1)
@@ -72,12 +80,12 @@ int demodIdteck(bool verbose) {
             return PM3_ESOFT;
         }
     }
-    setDemodBuff(DemodBuffer, 64, idx);
+    setDemodBuff(g_DemodBuffer, 64, idx);
 
     //got a good demod
     uint32_t id = 0;
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
 
     //parity check (TBD)
     //checksum check (TBD)
@@ -112,7 +120,7 @@ static int CmdIdteckClone(const char *Cmd) {
                  );
     void *argtable[] = {
         arg_param_begin,
-        arg_strx0("r", "raw", "<hex>", "raw bytes"),
+        arg_str1("r", "raw", "<hex>", "raw bytes"),
         arg_lit0(NULL, "q5", "optional - specify writing to Q5/T5555 tag"),
         arg_lit0(NULL, "em", "optional - specify writing to EM4305/4469 tag"),
         arg_param_end
@@ -178,7 +186,7 @@ static int CmdIdteckSim(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_strx0("r", "raw", "<hex>", "raw bytes"),
+        arg_str1("r", "raw", "<hex>", "raw bytes"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -193,7 +201,7 @@ static int CmdIdteckSim(const char *Cmd) {
     memset(bs, 0x00, sizeof(bs));
 
     uint8_t counter = 0;
-    for (int8_t i = 0; i < raw_len; i++) {
+    for (int32_t i = 0; i < raw_len; i++) {
         uint8_t tmp = raw[i];
         bs[counter++] = (tmp >> 7) & 1;
         bs[counter++] = (tmp >> 6) & 1;

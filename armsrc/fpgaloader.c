@@ -1,10 +1,18 @@
 //-----------------------------------------------------------------------------
-// Jonathan Westhues, April 2006
-// iZsh <izsh at fail0verflow.com>, 2014
+// Copyright (C) Jonathan Westhues, April 2006
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Routines to load the FPGA image, and then to configure the FPGA's major
 // mode once it is configured.
@@ -22,13 +30,13 @@
 
 #include "lz4.h"       // uncompress
 
-typedef struct lz4_stream_s {
+typedef struct {
     LZ4_streamDecode_t *lz4StreamDecode;
     char *next_in;
     int avail_in;
-} lz4_stream;
+} lz4_stream_t;
 
-typedef lz4_stream *lz4_streamp;
+typedef lz4_stream_t *lz4_streamp_t;
 
 // remember which version of the bitstream we have already downloaded to the FPGA
 static int downloaded_bitstream = 0;
@@ -87,40 +95,40 @@ void SetupSpi(int mode) {
         case SPI_FPGA_MODE:
             AT91C_BASE_SPI->SPI_MR =
                 (0 << 24)          |  // Delay between chip selects (take default: 6 MCK periods)
-                (0xE << 16)         | // Peripheral Chip Select (selects FPGA SPI_NCS0 or PA11)
+                (0xE << 16)        |  // Peripheral Chip Select (selects FPGA SPI_NCS0 or PA11)
                 (0 << 7)           |  // Local Loopback Disabled
-                AT91C_SPI_MODFDIS   | // Mode Fault Detection disabled
+                AT91C_SPI_MODFDIS  |  // Mode Fault Detection disabled
                 (0 << 2)           |  // Chip selects connected directly to peripheral
-                AT91C_SPI_PS_FIXED  | // Fixed Peripheral Select
+                AT91C_SPI_PS_FIXED |  // Fixed Peripheral Select
                 AT91C_SPI_MSTR;       // Master Mode
 
             AT91C_BASE_SPI->SPI_CSR[0] =
                 (1 << 24)          |  // Delay between Consecutive Transfers (32 MCK periods)
                 (1 << 16)          |  // Delay Before SPCK (1 MCK period)
                 (6 << 8)           |  // Serial Clock Baud Rate (baudrate = MCK/6 = 24MHz/6 = 4M baud
-                AT91C_SPI_BITS_16   | // Bits per Transfer (16 bits)
+                AT91C_SPI_BITS_16  |  // Bits per Transfer (16 bits)
                 (0 << 3)           |  // Chip Select inactive after transfer
-                AT91C_SPI_NCPHA     | // Clock Phase data captured on leading edge, changes on following edge
+                AT91C_SPI_NCPHA    |  // Clock Phase data captured on leading edge, changes on following edge
                 (0 << 0);             // Clock Polarity inactive state is logic 0
             break;
         /*
                     case SPI_LCD_MODE:
                     AT91C_BASE_SPI->SPI_MR =
-                        ( 0 << 24)          | // Delay between chip selects (take default: 6 MCK periods)
-                        (0xB << 16)         | // Peripheral Chip Select (selects LCD SPI_NCS2 or PA10)
-                        ( 0 << 7)           | // Local Loopback Disabled
-                        ( 1 << 4)           | // Mode Fault Detection disabled
-                        ( 0 << 2)           | // Chip selects connected directly to peripheral
-                        ( 0 << 1)           | // Fixed Peripheral Select
+                        ( 0 << 24)         |  // Delay between chip selects (take default: 6 MCK periods)
+                        (0xB << 16)        |  // Peripheral Chip Select (selects LCD SPI_NCS2 or PA10)
+                        ( 0 << 7)          |  // Local Loopback Disabled
+                        ( 1 << 4)          |  // Mode Fault Detection disabled
+                        ( 0 << 2)          |  // Chip selects connected directly to peripheral
+                        ( 0 << 1)          |  // Fixed Peripheral Select
                         ( 1 << 0);            // Master Mode
 
                     AT91C_BASE_SPI->SPI_CSR[2] =
-                        ( 1 << 24)          | // Delay between Consecutive Transfers (32 MCK periods)
-                        ( 1 << 16)          | // Delay Before SPCK (1 MCK period)
-                        ( 6 << 8)           | // Serial Clock Baud Rate (baudrate = MCK/6 = 24MHz/6 = 4M baud
-                        AT91C_SPI_BITS_9    | // Bits per Transfer (9 bits)
-                        ( 0 << 3)           | // Chip Select inactive after transfer
-                        ( 1 << 1)           | // Clock Phase data captured on leading edge, changes on following edge
+                        ( 1 << 24)         |  // Delay between Consecutive Transfers (32 MCK periods)
+                        ( 1 << 16)         |  // Delay Before SPCK (1 MCK period)
+                        ( 6 << 8)          |  // Serial Clock Baud Rate (baudrate = MCK/6 = 24MHz/6 = 4M baud
+                        AT91C_SPI_BITS_9   |  // Bits per Transfer (9 bits)
+                        ( 0 << 3)          |  // Chip Select inactive after transfer
+                        ( 1 << 1)          |  // Clock Phase data captured on leading edge, changes on following edge
                         ( 0 << 0);            // Clock Polarity inactive state is logic 0
                     break;
         */
@@ -154,7 +162,8 @@ void FpgaSetupSsc(uint16_t fpga_mode) {
 
     // 8, 16 or 32 bits per transfer, no loopback, MSB first, 1 transfer per sync
     // pulse, no output sync
-    if ((fpga_mode & FPGA_MAJOR_MODE_MASK) == FPGA_MAJOR_MODE_HF_READER && FpgaGetCurrent() == FPGA_BITSTREAM_HF) {
+    if (((fpga_mode & FPGA_MAJOR_MODE_MASK) == FPGA_MAJOR_MODE_HF_READER ) &&
+            (FpgaGetCurrent() == FPGA_BITSTREAM_HF || FpgaGetCurrent() == FPGA_BITSTREAM_HF_15)) {
         AT91C_BASE_SSC->SSC_RFMR = SSC_FRAME_MODE_BITS_IN_WORD(16) | AT91C_SSC_MSBF | SSC_FRAME_MODE_WORDS_PER_TRANSFER(0);
     } else {
         AT91C_BASE_SSC->SSC_RFMR = SSC_FRAME_MODE_BITS_IN_WORD(8) | AT91C_SSC_MSBF | SSC_FRAME_MODE_WORDS_PER_TRANSFER(0);
@@ -190,7 +199,7 @@ bool FpgaSetupSscDma(uint8_t *buf, uint16_t len) {
 //----------------------------------------------------------------------------
 // Uncompress (inflate) the FPGA data. Returns one decompressed byte with each call.
 //----------------------------------------------------------------------------
-static int get_from_fpga_combined_stream(lz4_streamp compressed_fpga_stream, uint8_t *output_buffer) {
+static int get_from_fpga_combined_stream(lz4_streamp_t compressed_fpga_stream, uint8_t *output_buffer) {
     if (fpga_image_ptr == output_buffer + FPGA_RING_BUFFER_BYTES) { // need more data
         fpga_image_ptr = output_buffer;
         int cmp_bytes;
@@ -217,7 +226,7 @@ static int get_from_fpga_combined_stream(lz4_streamp compressed_fpga_stream, uin
 // are combined into one big file:
 // 288 bytes from FPGA file 1, followed by 288 bytes from FGPA file 2, etc.
 //----------------------------------------------------------------------------
-static int get_from_fpga_stream(int bitstream_version, lz4_streamp compressed_fpga_stream, uint8_t *output_buffer) {
+static int get_from_fpga_stream(int bitstream_version, lz4_streamp_t compressed_fpga_stream, uint8_t *output_buffer) {
     while ((uncompressed_bytes_cnt / FPGA_INTERLEAVE_SIZE) % g_fpga_bitstream_num != (bitstream_version - 1)) {
         // skip undesired data belonging to other bitstream_versions
         get_from_fpga_combined_stream(compressed_fpga_stream, output_buffer);
@@ -229,7 +238,7 @@ static int get_from_fpga_stream(int bitstream_version, lz4_streamp compressed_fp
 //----------------------------------------------------------------------------
 // Initialize decompression of the respective (HF or LF) FPGA stream
 //----------------------------------------------------------------------------
-static bool reset_fpga_stream(int bitstream_version, lz4_streamp compressed_fpga_stream, uint8_t *output_buffer) {
+static bool reset_fpga_stream(int bitstream_version, lz4_streamp_t compressed_fpga_stream, uint8_t *output_buffer) {
     uint8_t header[FPGA_BITSTREAM_FIXED_HEADER_SIZE];
 
     uncompressed_bytes_cnt = 0;
@@ -267,12 +276,13 @@ static void DownloadFPGA_byte(uint8_t w) {
 }
 
 // Download the fpga image starting at current stream position with length FpgaImageLen bytes
-static void DownloadFPGA(int bitstream_version, int FpgaImageLen, lz4_streamp compressed_fpga_stream, uint8_t *output_buffer) {
+static void DownloadFPGA(int bitstream_version, int FpgaImageLen, lz4_streamp_t compressed_fpga_stream, uint8_t *output_buffer) {
     int i = 0;
-
+#if !defined XC3
     AT91C_BASE_PIOA->PIO_OER = GPIO_FPGA_ON;
     AT91C_BASE_PIOA->PIO_PER = GPIO_FPGA_ON;
     HIGH(GPIO_FPGA_ON);  // ensure everything is powered on
+#endif
 
     SpinDelay(50);
 
@@ -285,7 +295,13 @@ static void DownloadFPGA(int bitstream_version, int FpgaImageLen, lz4_streamp co
     // PIO controls the following pins
     AT91C_BASE_PIOA->PIO_PER =
         GPIO_FPGA_NINIT |
+#if defined XC3
+        //3S100E M2 & M3 PIO ENA
+        GPIO_SPCK |
+        GPIO_MOSI |
+#endif
         GPIO_FPGA_DONE;
+
     // Enable pull-ups
     AT91C_BASE_PIOA->PIO_PPUER =
         GPIO_FPGA_NINIT |
@@ -299,7 +315,18 @@ static void DownloadFPGA(int bitstream_version, int FpgaImageLen, lz4_streamp co
     AT91C_BASE_PIOA->PIO_OER =
         GPIO_FPGA_NPROGRAM |
         GPIO_FPGA_CCLK     |
+#if defined XC3
+        //3S100E M2 & M3 OUTPUT ENA
+        GPIO_SPCK |
+        GPIO_MOSI |
+#endif
         GPIO_FPGA_DIN;
+
+#if defined XC3
+    //3S100E M2 & M3 OUTPUT HIGH
+    HIGH(GPIO_SPCK);
+    HIGH(GPIO_MOSI);
+#endif
 
     // enter FPGA configuration mode
     LOW(GPIO_FPGA_NPROGRAM);
@@ -318,6 +345,13 @@ static void DownloadFPGA(int bitstream_version, int FpgaImageLen, lz4_streamp co
         LED_D_ON();
         return;
     }
+
+#if defined XC3
+    //3S100E M2 & M3 RETURN TO NORMAL
+    LOW(GPIO_SPCK);
+    LOW(GPIO_MOSI);
+    AT91C_BASE_PIOA->PIO_PDR = GPIO_SPCK | GPIO_MOSI;
+#endif
 
     for (i = 0; i < FpgaImageLen; i++) {
         int b = get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer);
@@ -349,7 +383,7 @@ static void DownloadFPGA(int bitstream_version, int FpgaImageLen, lz4_streamp co
  * (big endian), <length> bytes content. Except for section 'e' which has 4 bytes
  * length.
  */
-static int bitparse_find_section(int bitstream_version, char section_name, uint32_t *section_length, lz4_streamp compressed_fpga_stream, uint8_t *output_buffer) {
+static int bitparse_find_section(int bitstream_version, char section_name, uint32_t *section_length, lz4_streamp_t compressed_fpga_stream, uint8_t *output_buffer) {
 
 #define MAX_FPGA_BIT_STREAM_HEADER_SEARCH 100  // maximum number of bytes to search for the requested section
 
@@ -369,16 +403,22 @@ static int bitparse_find_section(int bitstream_version, char section_name, uint3
                 /* Four byte length field */
                 current_length += get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer) << 24;
                 current_length += get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer) << 16;
-                numbytes += 2;
-            default: /* Fall through, two byte length field */
+                current_length += get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer) << 8;
+                current_length += get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer) << 0;
+                numbytes += 4;
+                if (current_length > 300 * 1024) {
+                    /* section e should never exceed about 300KB, if the length is too big limit it but still send the bitstream just in case */
+                    current_length = 300 * 1024;
+                }
+                break;
+            default: /* Two byte length field */
                 current_length += get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer) << 8;
                 current_length += get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer) << 0;
                 numbytes += 2;
-        }
-
-        if (current_name != 'e' && current_length > 255) {
-            /* Maybe a parse error */
-            break;
+                if (current_length > 64) {
+                    /* if text field is too long, keep it but truncate it */
+                    current_length = 64;
+                }
         }
 
         if (current_name == section_name) {
@@ -388,13 +428,49 @@ static int bitparse_find_section(int bitstream_version, char section_name, uint3
             break;
         }
 
-        for (uint16_t i = 0; i < current_length && numbytes < MAX_FPGA_BIT_STREAM_HEADER_SEARCH; i++) {
+        for (uint32_t i = 0; i < current_length && numbytes < MAX_FPGA_BIT_STREAM_HEADER_SEARCH; i++) {
             get_from_fpga_stream(bitstream_version, compressed_fpga_stream, output_buffer);
             numbytes++;
         }
     }
     return result;
 }
+
+//----------------------------------------------------------------------------
+// Change FPGA image status, if image loaded.
+// bitstream_version is your new fpga image version
+// return true if can change.
+// return false if image is unloaded.
+//----------------------------------------------------------------------------
+#if defined XC3
+static bool FpgaConfCurrentMode(int bitstream_version) {
+    // fpga "XC3S100E" image merge
+    // If fpga image is no init
+    // We need load hf_lf_allinone.bit
+    if (downloaded_bitstream != 0) {
+        // test start
+        // PIO controls the following pins
+        AT91C_BASE_PIOA->PIO_PER = GPIO_FPGA_SWITCH;
+        // These pins are outputs
+        AT91C_BASE_PIOA->PIO_OER = GPIO_FPGA_SWITCH;
+
+        // try to turn off antenna
+        FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
+
+        if (bitstream_version == FPGA_BITSTREAM_LF) {
+            LOW(GPIO_FPGA_SWITCH);
+        } else {
+            HIGH(GPIO_FPGA_SWITCH);
+        }
+        // update downloaded_bitstream
+        downloaded_bitstream = bitstream_version;
+        // turn off antenna
+        FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
+        return true;
+    }
+    return false;
+}
+#endif
 
 //----------------------------------------------------------------------------
 // Check which FPGA image is currently loaded (if any). If necessary
@@ -408,16 +484,24 @@ void FpgaDownloadAndGo(int bitstream_version) {
         return;
     }
 
+#if defined XC3
+    // If we can change image version
+    // direct return.
+    if (FpgaConfCurrentMode(bitstream_version)) {
+        return;
+    }
+#endif
+
     // Send waiting time extension request as this will take a while
     send_wtx(1500);
 
-    bool verbose = (DBGLEVEL > 3);
+    bool verbose = (g_dbglevel > 3);
 
     // make sure that we have enough memory to decompress
     BigBuf_free();
     BigBuf_Clear_ext(verbose);
 
-    lz4_stream compressed_fpga_stream;
+    lz4_stream_t compressed_fpga_stream;
     LZ4_streamDecode_t lz4StreamDecode_body = {{ 0 }};
     compressed_fpga_stream.lz4StreamDecode = &lz4StreamDecode_body;
     uint8_t *output_buffer = BigBuf_malloc(FPGA_RING_BUFFER_BYTES);
@@ -430,6 +514,12 @@ void FpgaDownloadAndGo(int bitstream_version) {
         DownloadFPGA(bitstream_version, bitstream_length, &compressed_fpga_stream, output_buffer);
         downloaded_bitstream = bitstream_version;
     }
+
+#if defined XC3
+    // first download fpga image to hf
+    // we need to change fpga status to hf
+    FpgaConfCurrentMode(bitstream_version);
+#endif
 
     // turn off antenna
     FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
@@ -455,7 +545,7 @@ void FpgaSendCommand(uint16_t cmd, uint16_t v) {
 //-----------------------------------------------------------------------------
 // Write the FPGA setup word (that determines what mode the logic is in, read
 // vs. clone vs. etc.). This is now a special case of FpgaSendCommand() to
-// avoid changing this function's occurence everywhere in the source code.
+// avoid changing this function's occurrence everywhere in the source code.
 //-----------------------------------------------------------------------------
 void FpgaWriteConfWord(uint16_t v) {
     FpgaSendCommand(FPGA_CMD_SET_CONFREG, v);
@@ -525,13 +615,15 @@ int FpgaGetCurrent(void) {
 // if HF,  Disable SSC DMA
 // turn off trace and leds off.
 void switch_off(void) {
-    if (DBGLEVEL > 3) {
+    if (g_dbglevel > 3) {
         Dbprintf("switch_off");
     }
+
     FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
-    if (downloaded_bitstream == FPGA_BITSTREAM_HF) {
+    if (downloaded_bitstream == FPGA_BITSTREAM_HF || downloaded_bitstream == FPGA_BITSTREAM_HF_15) {
         FpgaDisableSscDma();
     }
+
     set_tracing(false);
     LEDsoff();
 }

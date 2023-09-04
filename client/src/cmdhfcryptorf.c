@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2020 iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // High frequency CryptoRF commands (ISO14443B)
 //-----------------------------------------------------------------------------
@@ -121,7 +129,7 @@ static bool get_14b_UID(iso14b_card_select_t *card) {
     return false;
 }
 
-// Print extented information about tag.
+// Print extended information about tag.
 static int infoHFCryptoRF(bool verbose) {
     iso14b_raw_cmd_t packet = {
         .flags = (ISO14B_CONNECT | ISO14B_SELECT_STD | ISO14B_DISCONNECT),
@@ -314,7 +322,7 @@ static int CmdHFCryptoRFDump(const char *Cmd) {
     PacketResponseNG resp;
 
     // select
-    int status = 0;
+    int status;
     if (WaitForResponseTimeout(CMD_HF_ISO14443B_COMMAND, &resp, 2000)) {
         status = resp.oldarg[0];
         if (status < 0) {
@@ -402,8 +410,7 @@ static int CmdHFCryptoRFDump(const char *Cmd) {
 
     if (fnlen < 1) {
         PrintAndLogEx(INFO, "Using UID as filename");
-        char *fptr = filename;
-        fptr += sprintf(fptr, "hf-cryptorf-");
+        char *fptr = filename + snprintf(filename, sizeof(filename), "hf-cryptorf-");
         FillFileNameByUID(fptr, card.uid, "-dump", card.uidlen);
     }
 
@@ -423,7 +430,7 @@ static int CmdHFCryptoRFELoad(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_str1("f", "file", "<filename>", "filename of dump"),
+        arg_str1("f", "file", "<fn>", "filename of dump"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -462,7 +469,7 @@ static int CmdHFCryptoRFELoad(const char *Cmd) {
         uint32_t bytes_in_packet = MIN(PM3_CMD_DATA_SIZE, bytes_remaining);
         if (bytes_in_packet == bytes_remaining) {
             // Disable fast mode on last packet
-            conn.block_after_ACK = false;
+            g_conn.block_after_ACK = false;
         }
         clearCommandBuffer();
         SendCommandMIX(CMD_HF_CRYPTORF_EML_MEMSET, bytes_sent, bytes_in_packet, 0, data + bytes_sent, bytes_in_packet);
@@ -516,8 +523,7 @@ static int CmdHFCryptoRFESave(const char *Cmd) {
     // user supplied filename?
     if (fnlen < 1) {
         PrintAndLogEx(INFO, "Using UID as filename");
-        char *fptr = filename;
-        fptr += sprintf(fptr, "hf-cryptorf-");
+        char *fptr = filename + snprintf(filename, sizeof(filename), "hf-cryptorf-");
         FillFileNameByUID(fptr, data, "-dump", 4);
     }
 

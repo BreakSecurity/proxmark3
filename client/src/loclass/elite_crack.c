@@ -1,40 +1,36 @@
-/*****************************************************************************
- * WARNING
- *
- * THIS CODE IS CREATED FOR EXPERIMENTATION AND EDUCATIONAL USE ONLY.
- *
- * USAGE OF THIS CODE IN OTHER WAYS MAY INFRINGE UPON THE INTELLECTUAL
- * PROPERTY OF OTHER PARTIES, SUCH AS INSIDE SECURE AND HID GLOBAL,
- * AND MAY EXPOSE YOU TO AN INFRINGEMENT ACTION FROM THOSE PARTIES.
- *
- * THIS CODE SHOULD NEVER BE USED TO INFRINGE PATENTS OR INTELLECTUAL PROPERTY RIGHTS.
- *
- *****************************************************************************
- *
- * This file is part of loclass. It is a reconstructon of the cipher engine
- * used in iClass, and RFID techology.
- *
- * The implementation is based on the work performed by
- * Flavio D. Garcia, Gerhard de Koning Gans, Roel Verdult and
- * Milosch Meriac in the paper "Dismantling IClass".
- *
- * Copyright (C) 2014 Martin Holst Swende
- *
- * This is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation, or, at your option, any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with loclass.  If not, see <http://www.gnu.org/licenses/>.
- *
- *
- *
- ****************************************************************************/
+//-----------------------------------------------------------------------------
+// Borrowed initially from https://github.com/holiman/loclass
+// Copyright (C) 2014 Martin Holst Swende
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
+//-----------------------------------------------------------------------------
+// WARNING
+//
+// THIS CODE IS CREATED FOR EXPERIMENTATION AND EDUCATIONAL USE ONLY.
+//
+// USAGE OF THIS CODE IN OTHER WAYS MAY INFRINGE UPON THE INTELLECTUAL
+// PROPERTY OF OTHER PARTIES, SUCH AS INSIDE SECURE AND HID GLOBAL,
+// AND MAY EXPOSE YOU TO AN INFRINGEMENT ACTION FROM THOSE PARTIES.
+//
+// THIS CODE SHOULD NEVER BE USED TO INFRINGE PATENTS OR INTELLECTUAL PROPERTY RIGHTS.
+//-----------------------------------------------------------------------------
+// It is a reconstruction of the cipher engine used in iClass, and RFID techology.
+//
+// The implementation is based on the work performed by
+// Flavio D. Garcia, Gerhard de Koning Gans, Roel Verdult and
+// Milosch Meriac in the paper "Dismantling IClass".
+//-----------------------------------------------------------------------------
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -70,7 +66,7 @@
  * @param key
  * @param dest
  */
-void permutekey(uint8_t key[8], uint8_t dest[8]) {
+void permutekey(const uint8_t key[8], uint8_t dest[8]) {
     for (uint8_t i = 0 ; i < 8 ; i++) {
         dest[i] = (((key[7] & (0x80 >> i)) >> (7 - i)) << 7) |
                   (((key[6] & (0x80 >> i)) >> (7 - i)) << 6) |
@@ -88,7 +84,7 @@ void permutekey(uint8_t key[8], uint8_t dest[8]) {
  * @param key
  * @param dest
  */
-void permutekey_rev(uint8_t key[8], uint8_t dest[8]) {
+void permutekey_rev(const uint8_t key[8], uint8_t dest[8]) {
     int i;
     for (i = 0 ; i < 8 ; i++) {
         dest[7 - i] = (((key[0] & (0x80 >> i)) >> (7 - i)) << 7) |
@@ -138,7 +134,7 @@ static inline uint8_t swap(uint8_t val) {
  * @param csn the CSN used
  * @param k output
  */
-void hash1(uint8_t csn[], uint8_t k[]) {
+void hash1(const uint8_t csn[], uint8_t k[]) {
     k[0] = csn[0] ^ csn[1] ^ csn[2] ^ csn[3] ^ csn[4] ^ csn[5] ^ csn[6] ^ csn[7];
     k[1] = csn[0] + csn[1] + csn[2] + csn[3] + csn[4] + csn[5] + csn[6] + csn[7];
     k[2] = rr(swap(csn[2] + k[1]));
@@ -329,10 +325,9 @@ static void *bf_thread(void *thread_arg) {
     memcpy(bytes_to_recover, targ->bytes_to_recover, sizeof(bytes_to_recover));
     memcpy(keytable, targ->keytable, sizeof(keytable));
 
-    int found;
     while (!(brute & endmask)) {
 
-        found = __atomic_load_n(&loclass_found, __ATOMIC_SEQ_CST);
+        int found = __atomic_load_n(&loclass_found, __ATOMIC_SEQ_CST);
 
         if (found != 0xFF) return NULL;
 
@@ -450,7 +445,7 @@ int bruteforceItem(loclass_dumpdata_t item, uint16_t keytable[]) {
 
     loclass_thread_arg_t args[loclass_tc];
     // init thread arguments
-    for (int i = 0; i < loclass_tc; i++) {
+    for (size_t i = 0; i < loclass_tc; i++) {
         args[i].thread_idx = i;
         args[i].numbytes_to_recover = numbytes_to_recover;
         args[i].endmask = 1 << 8 * numbytes_to_recover;
@@ -463,7 +458,7 @@ int bruteforceItem(loclass_dumpdata_t item, uint16_t keytable[]) {
 
     pthread_t threads[loclass_tc];
     // create threads
-    for (int i = 0; i < loclass_tc; i++) {
+    for (size_t i = 0; i < loclass_tc; i++) {
         int res = pthread_create(&threads[i], NULL, bf_thread, (void *)&args[i]);
         if (res) {
             PrintAndLogEx(NORMAL, "");
@@ -473,7 +468,7 @@ int bruteforceItem(loclass_dumpdata_t item, uint16_t keytable[]) {
     }
     // wait for threads to terminate:
     void *ptrs[loclass_tc];
-    for (int i = 0; i < loclass_tc; i++)
+    for (size_t i = 0; i < loclass_tc; i++)
         pthread_join(threads[i], &ptrs[i]);
 
     // was it a success?
@@ -498,7 +493,7 @@ int bruteforceItem(loclass_dumpdata_t item, uint16_t keytable[]) {
             keytable[bytes_to_recover[i]] &= 0xFF;
             keytable[bytes_to_recover[i]] |= LOCLASS_CRACKED;
         }
-        for (uint8_t i = 0; i < loclass_tc; i++) {
+        for (size_t i = 0; i < loclass_tc; i++) {
             free(ptrs[i]);
         }
     }
@@ -712,7 +707,7 @@ int calculateMasterKey(uint8_t first16bytes[], uint8_t kcus[]) {
     PrintAndLogEx(SUCCESS, "-----  " _CYAN_("High security custom key (Kcus)") " -----");
     PrintAndLogEx(SUCCESS, "Standard format  %s", sprint_hex(key64_stdformat, 8));
     PrintAndLogEx(SUCCESS, "iCLASS format    " _GREEN_("%s"), sprint_hex(key64, 8));
-    PrintAndLogEx(SUCCESS, "Key verified (" _GREEN_("ok") ")");
+    PrintAndLogEx(SUCCESS, "Key verified ( " _GREEN_("ok") " )");
     PrintAndLogEx(NORMAL, "");
     return PM3_SUCCESS;
 }
@@ -763,7 +758,7 @@ int bruteforceDump(uint8_t dump[], size_t dumpsize, uint16_t keytable[]) {
         first16bytes[i] = keytable[i] & 0xFF;
 
         if ((keytable[i] & LOCLASS_CRACKED) != LOCLASS_CRACKED) {
-            PrintAndLogEx(WARNING, "Warning: we are missing byte %d, custom key calculation will fail...", i);
+            PrintAndLogEx(WARNING, "Warning: we are missing byte " _RED_("%d") " , custom key calculation will fail...", i);
             return PM3_ESOFT;
         }
     }
@@ -854,7 +849,7 @@ static int _test_iclass_key_permutation(void) {
         return PM3_ESOFT;
     }
 
-    PrintAndLogEx(SUCCESS, "    Iclass key permutation (%s)", _GREEN_("ok"));
+    PrintAndLogEx(SUCCESS, "    Iclass key permutation ( %s )", _GREEN_("ok"));
     return PM3_SUCCESS;
 }
 
@@ -897,17 +892,17 @@ int testElite(bool slowtests) {
     hash2(k_cus, keytable);
     printarr_human_readable("---------------------- Hash2 ----------------------", keytable, sizeof(keytable));
     if (keytable[3] == 0xA1 && keytable[0x30] == 0xA3 && keytable[0x6F] == 0x95) {
-        PrintAndLogEx(SUCCESS, "    hash2 (%s)", _GREEN_("ok"));
+        PrintAndLogEx(SUCCESS, "    hash2 ( %s )", _GREEN_("ok"));
     }
 
     int res = PM3_SUCCESS;
     PrintAndLogEx(INFO, "Testing hash1...");
     res += _testHash1();
-    PrintAndLogEx((res == PM3_SUCCESS) ? SUCCESS : WARNING, "    hash1 (%s)", (res == PM3_SUCCESS) ? _GREEN_("ok") : _RED_("fail"));
+    PrintAndLogEx((res == PM3_SUCCESS) ? SUCCESS : WARNING, "    hash1 ( %s )", (res == PM3_SUCCESS) ? _GREEN_("ok") : _RED_("fail"));
 
     PrintAndLogEx(INFO, "Testing key diversification...");
     res += _test_iclass_key_permutation();
-    PrintAndLogEx((res == PM3_SUCCESS) ? SUCCESS : WARNING, "    key diversification (%s)", (res == PM3_SUCCESS) ? _GREEN_("ok") : _RED_("fail"));
+    PrintAndLogEx((res == PM3_SUCCESS) ? SUCCESS : WARNING, "    key diversification ( %s )", (res == PM3_SUCCESS) ? _GREEN_("ok") : _RED_("fail"));
 
     if (slowtests)
         res += _testBruteforce();

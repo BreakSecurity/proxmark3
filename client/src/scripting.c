@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2013 m h swende <martin at swende.se>
-// Modified 2015,2016, iceman
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Some lua scripting glue to proxmark core.
 //-----------------------------------------------------------------------------
@@ -71,7 +78,7 @@ static int l_fast_push_mode(lua_State *L) {
 
     bool enable = lua_toboolean(L, 1);
 
-    conn.block_after_ACK = enable;
+    g_conn.block_after_ACK = enable;
 
     // Disable fast mode and send a dummy command to make it effective
     if (enable == false) {
@@ -84,57 +91,6 @@ static int l_fast_push_mode(lua_State *L) {
 
     //Push the retval on the stack
     lua_pushboolean(L, enable);
-    return 1;
-}
-
-/**
- * The following params expected:
- * @brief l_SendCommandOLD
- * @param L - a lua string with the following five params.
- * @param cmd  must be hexstring, max u64
- * @param arg0  must be hexstring, max u64
- * @param arg1  must be hexstring, max u64
- * @param arg2  must be hexstring, max u64
- * @param data  must be hexstring less than 1024 chars(512bytes)
- * @return
- */
-static int l_SendCommandOLD(lua_State *L) {
-//  SendCommandMIX(CMD_HF_SNIFF, skippairs, skiptriggers, 0, NULL, 0);
-// (uint64_t cmd, uint64_t arg0, uint64_t arg1, uint64_t arg2, void *data, size_t len)
-
-    uint64_t cmd, arg0, arg1, arg2;
-    uint8_t data[PM3_CMD_DATA_SIZE] = {0};
-    size_t len = 0, size;
-
-    //Check number of arguments
-    int n = lua_gettop(L);
-    if (n != 5)  {
-        return returnToLuaWithError(L, "You need to supply five parameters");
-    }
-
-    // parse input
-    cmd = luaL_checknumber(L, 1);
-    arg0 = luaL_checknumber(L, 2);
-    arg1 = luaL_checknumber(L, 3);
-    arg2 = luaL_checknumber(L, 4);
-
-    // data
-    const char *p_data = luaL_checklstring(L, 5, &size);
-    if (size) {
-        if (size > 1024)
-            size = 1024;
-
-        uint32_t tmp;
-        for (int i = 0; i < size; i += 2) {
-            sscanf(&p_data[i], "%02x", &tmp);
-            data[i >> 1] = tmp & 0xFF;
-            len++;
-        }
-    }
-
-    clearCommandBuffer();
-    SendCommandOLD(cmd, arg0, arg1, arg2, data, len);
-    lua_pushboolean(L, true);
     return 1;
 }
 
@@ -683,12 +639,28 @@ static int l_aes128encrypt_ecb(lua_State *L) {
 
 static int l_crc8legic(lua_State *L) {
     size_t size;
-    const char *p_str = luaL_checklstring(L, 1, &size);
-
-    uint16_t retval = CRC8Legic((uint8_t *) p_str, size);
+    const char *p_hexstr = luaL_checklstring(L, 1, &size);
+    uint16_t retval = CRC8Legic((uint8_t *)p_hexstr, size);
     lua_pushunsigned(L, retval);
     return 1;
 }
+
+static int l_crc16legic(lua_State *L) {
+    size_t hexsize, uidsize;
+
+    // data as hex string
+    const char *p_hexstr = luaL_checklstring(L, 1, &hexsize);
+
+    // calc uid crc based on uid hex
+    const char *p_uid = luaL_checklstring(L, 2, &uidsize);
+    uint16_t uidcrc = CRC8Legic((uint8_t *)p_uid, uidsize);
+
+    init_table(CRC_LEGIC_16);
+    uint16_t retval = crc16_legic((uint8_t *)p_hexstr, hexsize, uidcrc);
+    lua_pushunsigned(L, retval);
+    return 1;
+}
+
 
 static int l_crc16(lua_State *L) {
     size_t size;
@@ -914,6 +886,39 @@ static int l_detect_prng(lua_State *L) {
     lua_pushinteger(L, res);
     return 1;
 }
+/*
+ * @brief l_keygen_algoB is a function to calculate pwd/pack using UID, by algo B
+ * @param L
+ * @return
+ */
+static int l_keygen_algoB(lua_State *L) {
+    //Check number of arguments
+    int n = lua_gettop(L);
+    if (n != 1)  {
+        return returnToLuaWithError(L, "Only UID");
+    }
+
+    size_t size;
+    uint32_t tmp;
+    const char *p_uid = luaL_checklstring(L, 1, &size);
+    if (size != 14)
+        return returnToLuaWithError(L, "Wrong size of UID, got %d bytes, expected 14", (int) size);
+
+    uint8_t uid[7] = {0, 0, 0, 0, 0, 0, 0};
+
+    for (int i = 0; i < 14; i += 2) {
+        sscanf(&p_uid[i], "%02x", &tmp);
+        uid[i / 2] = tmp & 0xFF;
+    }
+
+    uint32_t pwd = ul_ev1_pwdgenB(uid);
+    uint16_t pack = ul_ev1_packgenB(uid);
+
+    lua_pushunsigned(L, pwd);
+    lua_pushunsigned(L, pack);
+    return 2;
+}
+
 /*
  * @brief l_keygen_algoD is a function to calculate pwd/pack using UID, by algo D
  * @param L
@@ -1224,6 +1229,19 @@ static int l_ndefparse(lua_State *L) {
     return 1;
 }
 
+static int l_ul_read_uid(lua_State *L) {
+    uint8_t uid[7] = { 0, 0, 0, 0, 0, 0, 0 };
+    int res = ul_read_uid(uid);
+    if (res != PM3_SUCCESS) {
+        return returnToLuaWithError(L, "Failed to read Ultralight/NTAG UID");
+    }
+    char buf[15];
+    memset(buf, 0, sizeof(buf));
+    snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3], uid[4], uid[5], uid[6]);
+    lua_pushstring(L, buf);
+    return 1;
+}
+
 static int l_remark(lua_State *L) {
     //Check number of arguments
     int n = lua_gettop(L);
@@ -1251,8 +1269,9 @@ static int l_searchfile(lua_State *L) {
     size_t size;
     // data
     const char *filename = luaL_checklstring(L, 1, &size);
-    if (size == 0)
+    if (size == 0) {
         return returnToLuaWithError(L, "Must specify filename");
+    }
 
     const char *suffix =  luaL_checklstring(L, 2, &size);
     char *path;
@@ -1340,7 +1359,6 @@ static int setLuaPath(lua_State *L, const char *path) {
 
 int set_pm3_libraries(lua_State *L) {
     static const luaL_Reg libs[] = {
-        {"SendCommandOLD",              l_SendCommandOLD},
         {"SendCommandMIX",              l_SendCommandMIX},
         {"SendCommandNG",               l_SendCommandNG},
         {"GetFromBigBuf",               l_GetFromBigBuf},
@@ -1359,6 +1377,7 @@ int set_pm3_libraries(lua_State *L) {
         {"aes128_encrypt",              l_aes128encrypt_cbc},
         {"aes128_encrypt_ecb",          l_aes128encrypt_ecb},
         {"crc8legic",                   l_crc8legic},
+        {"crc16legic",                  l_crc16legic},
         {"crc16",                       l_crc16},
         {"crc64",                       l_crc64},
         {"crc64_ecma182",               l_crc64_ecma182},
@@ -1368,7 +1387,7 @@ int set_pm3_libraries(lua_State *L) {
         {"hardnested",                  l_hardnested},
         {"detect_prng",                 l_detect_prng},
 //        {"keygen.algoA",                l_keygen_algoA},
-//        {"keygen.algoB",                l_keygen_algoB},
+        {"keygen_algo_b",               l_keygen_algoB},
 //        {"keygen.algoC",                l_keygen_algoC},
         {"keygen_algo_d",               l_keygen_algoD},
         {"t55xx_readblock",             l_T55xx_readblock},
@@ -1382,6 +1401,7 @@ int set_pm3_libraries(lua_State *L) {
         {"rem",                         l_remark},
         {"em4x05_read",                 l_em4x05_read},
         {"em4x50_read",                 l_em4x50_read},
+        {"ul_read_uid",                 l_ul_read_uid},
         {NULL, NULL}
     };
 

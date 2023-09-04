@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Marshmellow
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Farpoint G Prox II / Pyramid tag commands
 // Biphase, rf/ , 96 bits  (unknown key calc + some bits)
@@ -27,10 +35,68 @@
 
 static int CmdHelp(const char *Cmd);
 
+static int demod_guard_raw(uint8_t *raw, uint8_t rlen) {
+
+    if (rlen != 12) {
+        return PM3_EINVARG;
+    }
+
+    uint8_t bits[96] = {0x00};
+    bytes_to_bytebits(raw, rlen, bits);
+
+    // start after 6 bit preamble
+    size_t start_idx = 6;
+    uint8_t bits_no_spacer[90];
+    memcpy(bits_no_spacer, bits + start_idx, 90);
+
+    // remove the 18 (90/5=18) parity bits (down to 72 bits (96-6-18=72))
+    size_t len = removeParity(bits_no_spacer, 0, 5, 3, 90); // source, startloc, paritylen, ptype, length_to_run
+    if (len != 72) {
+        PrintAndLogEx(DEBUG, "DEBUG: Error - gProxII spacer removal did not produce 72 bits: %zu, start: %zu", len, start_idx);
+        return PM3_ESOFT;
+    }
+
+    uint8_t plain[8] = {0x00};
+
+    // get key and then get all 8 bytes of payload decoded
+    uint8_t xorKey = (uint8_t)bytebits_to_byteLSBF(bits_no_spacer, 8);
+    for (size_t idx = 0; idx < 8; idx++) {
+        plain[idx] = ((uint8_t)bytebits_to_byteLSBF(bits_no_spacer + 8 + (idx * 8), 8)) ^ xorKey;
+        PrintAndLogEx(DEBUG, "DEBUG: gProxII byte %zu after xor: %02x", idx, plain[idx]);
+    }
+
+    // plain contains 8 Bytes (64 bits) of decrypted raw tag data
+    uint8_t fmtlen = plain[0] >> 2;
+    uint32_t FC = 0;
+    uint32_t Card = 0;
+
+    bool unknown = false;
+    switch (fmtlen) {
+        case 36:
+            FC = ((plain[3] & 0x7F) << 7) | (plain[4] >> 1);
+            Card = ((plain[4] & 1) << 19) | (plain[5] << 11) | (plain[6] << 3) | ((plain[7] & 0xE0) >> 5);
+            break;
+        case 26:
+            FC = ((plain[3] & 0x7F) << 1) | (plain[4] >> 7);
+            Card = ((plain[4] & 0x7F) << 9) | (plain[5] << 1) | (plain[6] >> 7);
+            break;
+        default :
+            unknown = true;
+            break;
+    }
+
+    if (unknown)
+        PrintAndLogEx(SUCCESS, "G-Prox-II - Unknown len: " _GREEN_("%u") "xor: " _GREEN_("%u")", Raw: %s", fmtlen, xorKey, sprint_hex_inrow(raw, rlen));
+    else
+        PrintAndLogEx(SUCCESS, "G-Prox-II - Len: " _GREEN_("%u")" FC: " _GREEN_("%u") " Card: " _GREEN_("%u") "xor: " _GREEN_("%u")", Raw: %s", fmtlen, FC, Card, xorKey, sprint_hex_inrow(raw, rlen));
+
+    return PM3_SUCCESS;
+}
+
 // attempts to demodulate and identify a G_Prox_II verex/chubb card
-// WARNING: if it fails during some points it will destroy the DemodBuffer data
-// but will leave the GraphBuffer intact.
-// if successful it will push askraw data back to demod buffer ready for emulation
+// WARNING: if it fails during some points it will destroy the g_DemodBuffer data
+// but will leave the g_GraphBuffer intact.
+// if successful it will push askraw data back to g_DemodBuffer ready for emulation
 int demodGuard(bool verbose) {
     (void) verbose; // unused so far
     //Differential Biphase
@@ -40,9 +106,9 @@ int demodGuard(bool verbose) {
         return PM3_ESOFT;
     }
 
-    size_t size = DemodBufferLen;
+    size_t size = g_DemodBufferLen;
 
-    int preambleIndex = detectGProxII(DemodBuffer, &size);
+    int preambleIndex = detectGProxII(g_DemodBuffer, &size);
     if (preambleIndex < 0) {
 
         if (preambleIndex == -1)
@@ -59,14 +125,13 @@ int demodGuard(bool verbose) {
     }
 
     // got a good demod of 96 bits
-
     uint8_t plain[8] = {0x00};
     uint8_t xorKey = 0;
     size_t startIdx = preambleIndex + 6; //start after 6 bit preamble
     uint8_t bits_no_spacer[90];
 
-    // not mess with raw DemodBuffer copy to a new sample array
-    memcpy(bits_no_spacer, DemodBuffer + startIdx, 90);
+    // not mess with raw g_DemodBuffer copy to a new sample array
+    memcpy(bits_no_spacer, g_DemodBuffer + startIdx, 90);
 
     // remove the 18 (90/5=18) parity bits (down to 72 bits (96-6-18=72))
     size_t len = removeParity(bits_no_spacer, 0, 5, 3, 90); //source, startloc, paritylen, ptype, length_to_run
@@ -77,12 +142,14 @@ int demodGuard(bool verbose) {
 
     // get key and then get all 8 bytes of payload decoded
     xorKey = (uint8_t)bytebits_to_byteLSBF(bits_no_spacer, 8);
+    PrintAndLogEx(DEBUG, "DEBUG: gProxII xorKey: %u", xorKey);
+
     for (size_t idx = 0; idx < 8; idx++) {
         plain[idx] = ((uint8_t)bytebits_to_byteLSBF(bits_no_spacer + 8 + (idx * 8), 8)) ^ xorKey;
-        PrintAndLogEx(DEBUG, "DEBUG: gProxII byte %zu after xor: %02x", idx, plain[idx]);
+        PrintAndLogEx(DEBUG, "DEBUG: gProxII byte %zu after xor: %02x (%02x before xor)", idx, plain[idx], bytebits_to_byteLSBF(bits_no_spacer + 8 + (idx * 8), 8));
     }
 
-    setDemodBuff(DemodBuffer, 96, preambleIndex);
+    setDemodBuff(g_DemodBuffer, 96, preambleIndex);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (preambleIndex * g_DemodClock));
 
     //plain contains 8 Bytes (64 bits) of decrypted raw tag data
@@ -90,12 +157,18 @@ int demodGuard(bool verbose) {
     uint32_t FC = 0;
     uint32_t Card = 0;
     //get raw 96 bits to print
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
-    uint32_t raw3 = bytebits_to_byte(DemodBuffer + 64, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
+    uint32_t raw3 = bytebits_to_byte(g_DemodBuffer + 64, 32);
     bool unknown = false;
     switch (fmtLen) {
         case 36:
+            PrintAndLogEx(DEBUG, "DEBUG: FC 1: %x", (plain[3] & 0x7F) << 7);
+            PrintAndLogEx(DEBUG, "DEBUG: FC 2: %x", plain[4] >> 1);
+            PrintAndLogEx(DEBUG, "DEBUG: Card 1: %x", (plain[4] & 1) << 19);
+            PrintAndLogEx(DEBUG, "DEBUG: Card 2: %x", plain[5] << 11);
+            PrintAndLogEx(DEBUG, "DEBUG: Card 3: %x", plain[6] << 3);
+            PrintAndLogEx(DEBUG, "DEBUG: Card 4: %x", (plain[7] & 0xE0) >> 5);
             FC = ((plain[3] & 0x7F) << 7) | (plain[4] >> 1);
             Card = ((plain[4] & 1) << 19) | (plain[5] << 11) | (plain[6] << 3) | ((plain[7] & 0xE0) >> 5);
             break;
@@ -107,10 +180,10 @@ int demodGuard(bool verbose) {
             unknown = true;
             break;
     }
-    if (!unknown)
-        PrintAndLogEx(SUCCESS, "G-Prox-II - len: " _GREEN_("%u")" FC: " _GREEN_("%u") " Card: " _GREEN_("%u") ", Raw: %08x%08x%08x", fmtLen, FC, Card, raw1, raw2, raw3);
+    if (unknown)
+        PrintAndLogEx(SUCCESS, "G-Prox-II - Unknown len: " _GREEN_("%u") " xor: " _GREEN_("%u")", Raw: %08x%08x%08x ", fmtLen, xorKey, raw1, raw2, raw3);
     else
-        PrintAndLogEx(SUCCESS, "G-Prox-II - Unknown len: " _GREEN_("%u") ", Raw: %08x%08x%08x", fmtLen, raw1, raw2, raw3);
+        PrintAndLogEx(SUCCESS, "G-Prox-II - Len: " _GREEN_("%u")" FC: " _GREEN_("%u") " Card: " _GREEN_("%u") " xor: " _GREEN_("%u") ", Raw: %08x%08x%08x", fmtLen, FC, Card, xorKey, raw1, raw2, raw3);
 
     return PM3_SUCCESS;
 }
@@ -119,16 +192,32 @@ static int CmdGuardDemod(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf gproxii demod",
                   "Try to find Guardall Prox-II preamble, if found decode / descramble data",
-                  "lf gproxii demod"
+                  "lf gproxii demod -> use graphbuffer to decode\n"
+                  "lf gproxii demod --raw fb8ee718ee3b8cc785c11b92   ->"
                  );
 
     void *argtable[] = {
         arg_param_begin,
+        arg_str0("r", "raw", "<hex>", "raw bytes"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
+
+    int raw_len = 0;
+    uint8_t raw[12] = {0};
+    CLIGetHexWithReturn(ctx, 1, raw, &raw_len);
+
     CLIParserFree(ctx);
-    return demodGuard(true);
+
+    if (raw_len != 12 && raw_len != 0) {
+        PrintAndLogEx(FAILED, "Must specify 12 bytes, got " _YELLOW_("%u"), raw_len);
+        return PM3_EINVARG;
+    }
+
+    if (raw_len == 0)
+        return demodGuard(true);
+    else
+        return demod_guard_raw(raw, raw_len);
 }
 
 static int CmdGuardReader(const char *Cmd) {
@@ -162,16 +251,17 @@ static int CmdGuardReader(const char *Cmd) {
 static int CmdGuardClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf gproxii clone",
-                  "clone a Guardall tag to a T55x7, Q5/T5555 or EM4305/4469 tag.\n"
-                  "The facility-code is 8-bit and the card number is 16-bit.  Larger values are truncated.\n"
-                  "Currently work only on 26bit",
-                  "lf gproxii clone --fmt 26 --fc 123 --cn 1337\n"
-                  "lf gproxii clone --q5 --fmt 26 --fc 123 --cn 1337   -> encode for Q5/T5555 tag\n"
-                  "lf gproxii clone --em --fmt 26 --fc 123 --cn 1337   -> encode for EM4305/4469"
+                  "Clone a Guardall tag to a T55x7, Q5/T5555 or EM4305/4469 tag.\n"
+                  "The facility-code is 8-bit and the card number is 20-bit.  Larger values are truncated.\n"
+                  "Currently work only on 26 | 36 bit format",
+                  "lf gproxii clone --xor 141 --fmt 26 --fc 123 --cn 1337       -> encode for T55x7 tag\n"
+                  "lf gproxii clone --xor 141 --fmt 26 --fc 123 --cn 1337 --q5  -> encode for Q5/T5555 tag\n"
+                  "lf gproxii clone --xor 141 --fmt 26 --fc 123 --cn 1337 --em  -> encode for EM4305/4469"
                  );
 
     void *argtable[] = {
         arg_param_begin,
+        arg_u64_1(NULL, "xor", "<dec>", "8-bit xor value (installation dependant)"),
         arg_u64_1(NULL, "fmt", "<dec>", "format length 26|32|36|40"),
         arg_u64_1(NULL, "fc", "<dec>", "8-bit value facility code"),
         arg_u64_1(NULL, "cn", "<dec>", "16-bit value card number"),
@@ -181,11 +271,13 @@ static int CmdGuardClone(const char *Cmd) {
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
 
-    uint32_t fmtlen = arg_get_u32_def(ctx, 1, 0);
-    uint32_t fc = arg_get_u32_def(ctx, 2, 0);
-    uint32_t cn = arg_get_u32_def(ctx, 3, 0);
-    bool q5 = arg_get_lit(ctx, 4);
-    bool em = arg_get_lit(ctx, 5);
+    uint32_t xorval = arg_get_u32_def(ctx, 1, 0);
+    uint32_t fmtlen = arg_get_u32_def(ctx, 2, 0);
+    uint32_t fc = arg_get_u32_def(ctx, 3, 0);
+    uint32_t cn = arg_get_u32_def(ctx, 4, 0);
+
+    bool q5 = arg_get_lit(ctx, 5);
+    bool em = arg_get_lit(ctx, 6);
     CLIParserFree(ctx);
 
     if (q5 && em) {
@@ -195,11 +287,11 @@ static int CmdGuardClone(const char *Cmd) {
 
     fmtlen &= 0x7f;
     uint32_t facilitycode = (fc & 0x000000FF);
-    uint32_t cardnumber = (cn & 0x0000FFFF);
+    uint32_t cardnumber = (cn & 0x00FFFFFF);
 
     //GuardProxII - compat mode, ASK/Biphase,  data rate 64, 3 data blocks
     uint8_t *bs = calloc(96, sizeof(uint8_t));
-    if (getGuardBits(fmtlen, facilitycode, cardnumber, bs) != PM3_SUCCESS) {
+    if (getGuardBits(xorval, fmtlen, facilitycode, cardnumber, bs) != PM3_SUCCESS) {
         PrintAndLogEx(ERR, "Error with tag bitstream generation.");
         free(bs);
         return PM3_ESOFT;
@@ -225,10 +317,11 @@ static int CmdGuardClone(const char *Cmd) {
 
     free(bs);
 
-    PrintAndLogEx(INFO, "Preparing to clone Guardall to " _YELLOW_("%s") " with Facility Code: " _GREEN_("%u") " Card Number: " _GREEN_("%u")
+    PrintAndLogEx(INFO, "Preparing to clone Guardall to " _YELLOW_("%s") " with Facility Code: " _GREEN_("%u") " Card Number: " _GREEN_("%u") " xorKey: " _GREEN_("%u")
                   , cardtype
                   , facilitycode
                   , cardnumber
+                  , xorval
                  );
     print_blocks(blocks,  ARRAYLEN(blocks));
 
@@ -250,12 +343,13 @@ static int CmdGuardSim(const char *Cmd) {
                   "Enables simulation of Guardall card with specified card number.\n"
                   "Simulation runs until the button is pressed or another USB command is issued.\n"
                   "The facility-code is 8-bit and the card number is 16-bit.  Larger values are truncated.\n"
-                  "Currently work only on 26bit",
-                  "lf gproxii sim --fmt 26 --fc 123 --cn 1337\n"
+                  "Currently work only on 26 | 36 bit format",
+                  "lf gproxii sim --xor 141 --fmt 26 --fc 123 --cn 1337\n"
                  );
 
     void *argtable[] = {
         arg_param_begin,
+        arg_u64_1(NULL, "xor", "<dec>", "8-bit xor value (installation dependant)"),
         arg_u64_1(NULL, "fmt", "<dec>", "format length 26|32|36|40"),
         arg_u64_1(NULL, "fc", "<dec>", "8-bit value facility code"),
         arg_u64_1(NULL, "cn", "<dec>", "16-bit value card number"),
@@ -263,24 +357,26 @@ static int CmdGuardSim(const char *Cmd) {
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
 
-    uint32_t fmtlen = arg_get_u32_def(ctx, 1, 0);
-    uint32_t fc = arg_get_u32_def(ctx, 2, 0);
-    uint32_t cn = arg_get_u32_def(ctx, 3, 0);
+    uint32_t xorval = arg_get_u32_def(ctx, 1, 0);
+    uint32_t fmtlen = arg_get_u32_def(ctx, 2, 0);
+    uint32_t fc = arg_get_u32_def(ctx, 3, 0);
+    uint32_t cn = arg_get_u32_def(ctx, 4, 0);
     CLIParserFree(ctx);
 
     fmtlen &= 0x7F;
     uint32_t facilitycode = (fc & 0x000000FF);
-    uint32_t cardnumber = (cn & 0x0000FFFF);
+    uint32_t cardnumber = (cn & 0x000FFFFF);
 
     uint8_t bs[96];
     memset(bs, 0x00, sizeof(bs));
 
-    if (getGuardBits(fmtlen, facilitycode, cardnumber, bs) != PM3_SUCCESS) {
+    if (getGuardBits(xorval, fmtlen, facilitycode, cardnumber, bs) != PM3_SUCCESS) {
         PrintAndLogEx(ERR, "Error with tag bitstream generation.");
         return PM3_ESOFT;
     }
 
-    PrintAndLogEx(SUCCESS, "Simulating Guardall Prox - Facility Code: " _YELLOW_("%u") " CardNumber: " _YELLOW_("%u")
+    PrintAndLogEx(SUCCESS, "Simulating Guardall Prox - xorKey: " _YELLOW_("%u") " Facility Code: " _YELLOW_("%u") " CardNumber: " _YELLOW_("%u")
+                  , xorval
                   , facilitycode
                   , cardnumber
                  );
@@ -354,9 +450,8 @@ int detectGProxII(uint8_t *bits, size_t *size) {
 }
 
 // Works for 26bits.
-int getGuardBits(uint8_t fmtlen, uint32_t fc, uint32_t cn, uint8_t *guardBits) {
+int getGuardBits(uint8_t xorKey, uint8_t fmtlen, uint32_t fc, uint32_t cn, uint8_t *guardBits) {
 
-    uint8_t xorKey = 0x66;
     uint8_t i;
     uint8_t pre[96];
     uint8_t rawbytes[12];
@@ -367,7 +462,6 @@ int getGuardBits(uint8_t fmtlen, uint32_t fc, uint32_t cn, uint8_t *guardBits) {
     switch (fmtlen) {
         case 32: {
             rawbytes[1] = (32 << 2);
-
             break;
         }
         case 36: {
@@ -375,6 +469,7 @@ int getGuardBits(uint8_t fmtlen, uint32_t fc, uint32_t cn, uint8_t *guardBits) {
             // Get wiegand from FacilityCode 14bits, CardNumber 20bits
             uint8_t wiegand[36];
             memset(wiegand, 0x00, sizeof(wiegand));
+
             num_to_bytebits(fc, 14, wiegand);
             num_to_bytebits(cn, 20, wiegand + 14);
 
@@ -427,7 +522,7 @@ int getGuardBits(uint8_t fmtlen, uint32_t fc, uint32_t cn, uint8_t *guardBits) {
         num_to_bytebitsLSBF(rawbytes[i], 8, pre + (i * 8));
 
     PrintAndLogEx(DEBUG, " Raw | %s", sprint_hex(rawbytes, sizeof(rawbytes)));
-    PrintAndLogEx(DEBUG, " Raw | %s", sprint_bin(pre, 96));
+    PrintAndLogEx(DEBUG, " Raw | %s", sprint_bytebits_bin(pre, 96));
 
     // add spacer bit 0 every 4 bits, starting with index 0,
     // 12 bytes, 24 nibbles.  24+1 extra bites. 3bytes.  ie 9bytes | 1byte xorkey, 8bytes rawdata (72bits, should be enough for a 40bit wiegand)
@@ -441,7 +536,7 @@ int getGuardBits(uint8_t fmtlen, uint32_t fc, uint32_t cn, uint8_t *guardBits) {
     guardBits[4] = 1;
     guardBits[5] = 0;
 
-    PrintAndLogEx(DEBUG, " FIN | %s\n", sprint_bin(guardBits, 96));
+    PrintAndLogEx(DEBUG, " FIN | %s\n", sprint_bytebits_bin(guardBits, 96));
     return PM3_SUCCESS;
 }
 

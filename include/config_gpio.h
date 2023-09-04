@@ -1,7 +1,17 @@
 //-----------------------------------------------------------------------------
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // GPIO pin mapping for the Proxmark3
 //-----------------------------------------------------------------------------
@@ -43,7 +53,11 @@
 #define GPIO_BUTTON         AT91C_PIO_PA23
 #define GPIO_USB_PU         AT91C_PIO_PA24
 #define GPIO_RELAY          AT91C_PIO_PA25
+#if defined XC3
+#define GPIO_FPGA_SWITCH    AT91C_PIO_PA26
+#else
 #define GPIO_FPGA_ON        AT91C_PIO_PA26
+#endif
 #define GPIO_FPGA_DONE      AT91C_PIO_PA27
 #define GPIO_FPGA_NPROGRAM  AT91C_PIO_PA28
 #define GPIO_FPGA_CCLK      AT91C_PIO_PA29

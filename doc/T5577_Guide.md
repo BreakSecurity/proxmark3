@@ -1,9 +1,12 @@
 # T5577 Introduction Guide
+<a id="Top"></a>
 
-### Based on RRG/Iceman Proxmark3 repo
+### Based on Iceman Proxmark3 repo
 
 ### Ver.1 8 Sep 2019
 ### Ver.2 7 March 2021
+
+# Table of Contents
 
 | Contents                                                                            |
 | ----------------------------------------------------------------------------------- |
@@ -19,10 +22,14 @@
 | [The configuration Block – Block 0 Page 0](#the-configuration-block-block-0-page-0) |
 | [Exercise 2](#exercise-2)                                                           |
 | [The configuration Block – Block 3 Page 1](#the-configuration-block-block-3-page-1) |
+| [Sniffing commands](#sniffing-commands) |
+| [T5577 and Keysy](#t5577-and-keysy) |
 
 # Part 1
+^[Top](#top)
 
 ## Introduction
+^[Top](#top)
 
 The T5577 is a generic LF (Low Frequency) RFID card that is used in the
 125 Khz frequency space. It is a good card to use to learn about RFID and
@@ -49,6 +56,7 @@ try these as we go. To do so, have a blank T5577 card that you can use
 for this purpose.
 
 ## T5577 Overview
+^[Top](#top)
 
 The T5577 is a chip that can hold data and a configuration (Section
 4.12).
@@ -60,9 +68,13 @@ the chip how to behave.
 
 ![](./t55xx_mem_map.png)
 
+ #### What is "Traceability Data"?
+
+ Traceability data is manufacturer-programmed (and locked) data that contains information related to the manufacture of the chip - presumably so that issues can be "traced back" to the point and date of manufacture.  It contains data such as the year and quarter of manufacture, the wafer number on which the chip was produced, and the die number on the wafer.   The traceabiltiy data occupies blocks 1 and 2 of Page 1, and is normally NOT writeable, although some T5577 clones will allow you to overwrite these blocks.   You can read the traceability data with the `lf t55xx trace` command.
  
 
 ## What data is on my T5577
+^[Top](#top)
 
 Let’s have a look and see what a card might look like in the proxmark3
 software. Since we can change the configuration of how the T5577 will
@@ -121,6 +133,7 @@ I will cover the meaning of this data as we go, but for now, lets keep
 it simple.
 
 ## Read and Write Blocks of Data
+^[Top](#top)
 
 The basic function of using the proxmark3 with rfid cards is to read and
 write data. This reading and writing must be done in the correct way
@@ -129,7 +142,7 @@ developers have done a great job and gave us commands. What we need to
 know is that with the T5577, data is read/written one complete block at a
 time. Each block holds 32 bits of data (hence the binary output shown)  
   
-Since we know that the card has data and configuration blocks, lets say
+Since we know that the card has data and configuration blocks, lets stay
 away from those while we learn how to read and write. I suggest you
 follow along and perform each command and check the results as we go.
 
@@ -224,6 +237,7 @@ can see the card)
     ```
 
 ### Exercise 1
+^[Top](#top)
 
 Using the read and write commands you have learnt see if you can make
 the lf t55 dump command show the following data for blocks 1-7 (Page 0).
@@ -257,10 +271,11 @@ Practice reading and writing to blocks 1 to 6 until you are happy you
 can do it and get the results you wanted (i.e. the data you want stored
 is written to the block you want it stored in).  I recommend staying
 away from block 7 as this is where the password is stored, if used.
-If you forget this data/password, you wont be able to read or write
+If you forget this data/password, you won't be able to read or write
 to the card.
 
 ## How do I use a password
+^[Top](#top)
 
 This can be a little tricky for beginners. 
 ***If you forget your password you will lose access to your card***.
@@ -309,7 +324,7 @@ required, please do not proceed.
     [=]  Password set...... No                      
     ```
     
-    If block 0 does not hold the hex data **0x00088040 resolve this
+    If block 0 does not hold the hex data **0x000880E0 resolve this
     first before proceeding.**
 
 3)  Set the password we want to use. For this example lets use the
@@ -363,10 +378,10 @@ required, please do not proceed.
     We will cover other things in the configuration later. But the key
     note here, is we ONLY want to change bit 28 and nothing else.
     
-    Current Block 0 : ***00088040***  
-    New Block 0     : ***00088050***
+    Current Block 0 : ***000880E0***  
+    New Block 0     : ***000880F0***
     
-    To understand what happened to get from 00088040 to 00088050 we need
+    To understand what happened to get from 000880E0 to 000880F0 we need
     to look at the binary data.
     
     While this can be confusing, it is important to understand this as we
@@ -378,30 +393,28 @@ required, please do not proceed.
     
     | Hex Data | Binary Data                            |
     |:--------:|:---------------------------------------|
-    | 00088040 | 000000000000100010000000010***0***0000 |
-    | 00088050 | 000000000000100010000000010***1***0000 |
+    | 000880E0 | 000000000000100010000000111***0***0000 |
+    | 000880F0 | 000000000000100010000000111***1***0000 |
     
-    
-
     See how in the above we changed the bit in location 28 from a 0 to 1  
     0 = No Password, 1 = Use Password
 
     Note how we did NOT change any other part of the configuration, only bit 28.
 
     To re-cap.  
-        We put the card into a known configuration Block 0 : 00088040  
+        We put the card into a known configuration Block 0 : 000880E0  
         We set the a known password Block 7 : 12345678  
         We altered the config data to tell the T5577 to use the password.  
-            New Block 0 : 00088050  
+            New Block 0 : 000880F0  
 
     If you have completed all steps and have the exact same results, we are
     ready to apply the new configuration.
     ```
-    [usb] pm3 --> lf t55xx write -b 0 -d 00088050
+    [usb] pm3 --> lf t55xx write -b 0 -d 000880F0
     ```
     result:
     ```
-    [=] Writing page 0  block: 00  data: 0x00088050
+    [=] Writing page 0  block: 00  data: 0x000880F0
     ```
 
 6)  Lets check what happens when the password is set.
@@ -430,7 +443,7 @@ required, please do not proceed.
     [=]  Inverted.......... No
     [=]  Offset............ 33
     [=]  Seq. terminator... Yes
-    [=]  Block0............ 00088050 (auto detect)
+    [=]  Block0............ 000880F0 (auto detect)
     [=]  Downlink mode..... default/fixed bit length
     [=]  Password set...... Yes
     [=]  Password.......... 12345678
@@ -451,7 +464,9 @@ required, please do not proceed.
     
     ***Reading a T5577 block with a password when a password is not
     enabled can result in locking the card. Please only use read with a
-    password when it is known that a password is in use.***
+    password when it is known that a password is in use.
+    
+    At least don't use block 0 for this and password with `1` in the most significant bit***
     
     The proxmark3 has a safety check\!
     ```
@@ -494,13 +509,13 @@ required, please do not proceed.
     to read the config, and set bit 28 to 0, rather than just overwrite
     the config and change the way the card works.
     
-    In our examples we know what it should be : 00088040
+    In our examples we know what it should be : 000880E0
     ```
-    [usb] pm3 --> lf t55xx write -b 0 -d 00088040 -p 12345678
+    [usb] pm3 --> lf t55xx write -b 0 -d 000880E0 -p 12345678
     ```
     result:
     ```
-    [=] Writing page 0  block: 00  data: 0x00088040 pwd: 0x12345678
+    [=] Writing page 0  block: 00  data: 0x000880E0 pwd: 0x12345678
     ```
     Now check if we can detect without a password
     ```
@@ -514,13 +529,14 @@ required, please do not proceed.
     [=]  Inverted.......... No                       
     [=]  Offset............ 33                       
     [=]  Seq. terminator... Yes                      
-    [=]  Block0............ 00088040 (auto detect)   
+    [=]  Block0............ 000880E0 (auto detect)   
     [=]  Downlink mode..... default/fixed bit length 
     [=]  Password set...... No                       
     ```
-    Yes we can!  We can see Block 0 is the correct config 00088040
+    Yes we can!  We can see Block 0 is the correct config 000880E0
 
 # Part 2 – Configuration Blocks
+^[Top](#top)
 
 One of the things a lot of people have trouble with or miss, is that the
 T5577 has two different and separate communications protocols, each with
@@ -539,6 +555,7 @@ from Block 3 Page 1. If the command is not encoded correctly it will
 ignore the command and revert back to default read mode.
 
 ## The configuration Block – Block 0 Page 0
+^[Top](#top)
 
 For this configuration the settings chosen will be for the purpose of
 the card when used in production. E.G. If you want the card to act like
@@ -685,6 +702,7 @@ password set (if not, review and get you card back to this state).
     (Max Block = 2). On the T5577 these will be Blocks 1 and 2.
 
 ## Exercise 2
+^[Top](#top)
 
 Using the skills form part 1, see if you can view the data in blocks 1 and 2.
 
@@ -699,3 +717,34 @@ it, we can follow the password section and update the config from
 ***Important : Don’t forget to set a valid password in block 7 and remember it.***
 
 ## The configuration Block – Block 3 Page 1
+^[Top](#top)
+
+_to be written_
+
+
+## Sniffing commands
+^[Top](#top)
+
+Some readers work with cards via T55xx commands (read/write/etc) and think that they are safe)
+The password in this case is sent in clear text.
+So) There is a sniff command to get this command from the buffer or the field:
+
+    [usb] pm3 --> lf t55xx sniff
+
+    result:
+                               
+    [=] T55xx command detection
+    [+] Downlink mode           |  password  |   Data   | blk | page |  0  |  1  | raw
+    [+] ------------------------+------------+----------+-----+------+-----+-+---------------------------------------------
+    [+] Default write/pwd read  | [FFxxxxxx] | FFxxxxxx |  6  |   0  |  16 |  45 | 1011111111101xxxxxxxxxxxxxxxx100000110
+    [+] Default write/pwd read  | [FFxxxxxx] | FFxxxxxx |  6  |   0  |  17 |  46 | 1011111111101xxxxxxxxxxxxxxxx100000110
+    [+] -------------------------------------------------------------------------------------------------------------------
+
+
+
+## T5577 and Keysy
+^[Top](#top)
+
+The Keysy tag cloning tool (https://tinylabs.io/keysy/) uses T5577 tags that have a special "password" value (NOT the password described above) written in Block 6 that is tied to the traceability data.  The Keysy checks and computes the proper value for Block 6 and will not write to a tag that does not contain the proper value.   This DRM technology relies on the face that genuine T5577 chips cannot have their traceability data (Blocks 1 and 2 of Page 1) re-written and that the method to computer the proper value for Block 6 is proprietary, therefore compelling you to buy their branded tags.
+
+As noted earlier, certain T5577 clones DO allow you to overwrite the traceability data, thereby allowing a dump of a new Keysy tag to completely overwrite the entire memory and tricking the Keysy into using that tag.   This also implies that you should NEVER overwrite Block 6 on a Keysy tag, as doing so will prevent the use of the Keysy to program that tag in the future without restoring that value.

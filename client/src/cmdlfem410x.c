@@ -1,14 +1,19 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2010 iZsh <izsh at fail0verflow.com>
-
-// modified marshmellow
-// modified Iceman, 2020
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// Low frequency EM4x commands
+// Low frequency EM410x commands
 //-----------------------------------------------------------------------------
 
 #include "cmdlfem410x.h"
@@ -35,7 +40,7 @@
 #include "cliparser.h"
 #include "cmdhw.h"
 
-static uint64_t g_em410xid = 0;
+static uint64_t gs_em410xid = 0;
 
 static int CmdHelp(const char *Cmd);
 /* Read the ID of an EM410x tag.
@@ -69,7 +74,7 @@ static void em410x_construct_emul_graph(uint8_t *uid, uint8_t clock, uint8_t gap
         for (uint8_t j = 0; j < 8; j++) {
             bs[j] = (uid[i] >> (7 - j) & 1);
         }
-        PrintAndLogEx(DEBUG, "uid[%d] 0x%02x (%s)", i, uid[i], sprint_bin(bs, 4));
+        PrintAndLogEx(DEBUG, "EM ID[%d] 0x%02x (%s)", i, uid[i], sprint_bytebits_bin(bs, 4));
 
         for (uint8_t j = 0; j < 2; j++) {
             // append each bit
@@ -100,35 +105,55 @@ static void em410x_construct_emul_graph(uint8_t *uid, uint8_t clock, uint8_t gap
 }
 
 //print 64 bit EM410x ID in multiple formats
-void printEM410x(uint32_t hi, uint64_t id, bool verbose) {
+void printEM410x(uint32_t hi, uint64_t id, bool verbose, int type) {
 
     if (!id && !hi) return;
 
-    uint64_t n = 1;
-    uint64_t id2lo = 0;
-    uint8_t m, i;
-    for (m = 5; m > 0; m--) {
-        for (i = 0; i < 8; i++) {
-            id2lo = (id2lo << 1LL) | ((id & (n << (i + ((m - 1) * 8)))) >> (i + ((m - 1) * 8)));
-        }
-    }
-
     if (verbose == false) {
-
-        if (hi) {
-            PrintAndLogEx(SUCCESS, "EM 410x ID "_GREEN_("%06X%016" PRIX64), hi, id);
-        } else {
+        if (type & 0x1) { // Short ID
             PrintAndLogEx(SUCCESS, "EM 410x ID "_GREEN_("%010" PRIX64), id);
+        }
+        if (type & 0x2) { // Long ID
+            PrintAndLogEx(SUCCESS, "EM 410x XL ID "_GREEN_("%06X%016" PRIX64), hi, id);
+        }
+        if (type & 0x4) { // Short Extended ID
+            uint64_t data = (id << 20) >> 20;
+            // Convert back to Short ID
+            id = ((uint64_t)hi << 16) | (id >> 48);
+            if ((data & 0xFFFFFFFF) == 0) {
+                PrintAndLogEx(SUCCESS, "EM 410x ID "_GREEN_("%010" PRIX64)" Electra "_GREEN_("%03" PRIu64), id, data >> 32);
+            } else {
+                PrintAndLogEx(SUCCESS, "EM 410x ID "_GREEN_("%010" PRIX64)" on 128b frame with data "_GREEN_("%011" PRIX64), id, data);
+            }
         }
         return;
     }
 
-    if (hi) {
+    if (type & 0x2) { // Long ID
         //output 88 bit em id
-        PrintAndLogEx(SUCCESS, "EM 410x ID "_GREEN_("%06X%016" PRIX64), hi, id);
-        PrintAndLogEx(SUCCESS, "EM410x XL ( RF/%d )", g_DemodClock);
-    } else {
+        PrintAndLogEx(SUCCESS, "EM 410x XL ID "_GREEN_("%06X%016" PRIX64)" ( RF/%d )", hi, id, g_DemodClock);
+    }
+    if (type & 0x4) { // Short Extended ID
+        PrintAndLogEx(SUCCESS, "EM 410x Short ID found on a 128b frame");
+        uint64_t data = (id << 20) >> 20;
+        PrintAndLogEx(SUCCESS, "    Data after ID: "_GREEN_("%011" PRIX64), data);
+        if ((data & 0xFFFFFFFF) == 0) {
+            PrintAndLogEx(SUCCESS, "    Possibly an Electra (RO), 0x"_GREEN_("%03" PRIX64)" = "_GREEN_("%03" PRIu64), data >> 32, data >> 32);
+        }
+        PrintAndLogEx(SUCCESS, "    Short ID details:");
+        // Convert back to Short ID
+        id = ((uint64_t)hi << 16) | (id >> 48);
+    }
+    if (type & (0x4 | 0x1)) { // Short Extended or Short ID
         //output 40 bit em id
+        uint64_t n = 1;
+        uint64_t id2lo = 0;
+        uint8_t m, i;
+        for (m = 5; m > 0; m--) {
+            for (i = 0; i < 8; i++) {
+                id2lo = (id2lo << 1LL) | ((id & (n << (i + ((m - 1) * 8)))) >> (i + ((m - 1) * 8)));
+            }
+        }
         PrintAndLogEx(SUCCESS, "EM 410x ID "_GREEN_("%010" PRIX64), id);
         PrintAndLogEx(SUCCESS, "EM410x ( RF/%d )", g_DemodClock);
         PrintAndLogEx(INFO, "-------- " _CYAN_("Possible de-scramble patterns") " ---------");
@@ -204,6 +229,8 @@ void printEM410x(uint32_t hi, uint64_t id, bool verbose) {
         uint8_t  sebury2 = (id >> 16) & 0x7F;
         uint32_t sebury3 = id & 0x7FFFFF;
         PrintAndLogEx(SUCCESS, "Pattern Sebury     : %d %d %d  [0x%X 0x%X 0x%X]", sebury1, sebury2, sebury3, sebury1, sebury2, sebury3);
+        PrintAndLogEx(SUCCESS, "VD / ID            : %03" PRIu64 " / %010" PRIu64, (id >> 32LL) & 0xFFFF, (id & 0xFFFFFFFF));
+
         PrintAndLogEx(INFO, "------------------------------------------------");
     }
 }
@@ -243,17 +270,17 @@ int AskEm410xDecode(bool verbose, uint32_t *hi, uint64_t *lo) {
         return PM3_ESOFT;
     }
 
-    //set GraphBuffer for clone or sim command
-    setDemodBuff(DemodBuffer, (size == 40) ? 64 : 128, idx + 1);
+    //set g_GraphBuffer for clone or sim command
+    setDemodBuff(g_DemodBuffer, (size == 40) ? 64 : 128, idx + 1);
     setClockGrid(g_DemodClock, g_DemodStartIdx + ((idx + 1)*g_DemodClock));
 
-    PrintAndLogEx(DEBUG, "DEBUG: Em410x idx: %zu, Len: %zu, Printing Demod Buffer:", idx, size);
+    PrintAndLogEx(DEBUG, "DEBUG: Em410x idx: %zu, Len: %zu, Printing DemodBuffer:", idx, size);
     if (g_debugMode) {
         printDemodBuff(0, false, false, true);
     }
 
-    printEM410x(*hi, *lo, verbose);
-    g_em410xid = *lo;
+    printEM410x(*hi, *lo, verbose, ans);
+    gs_em410xid = *lo;
     return PM3_SUCCESS;
 }
 
@@ -345,12 +372,12 @@ static int CmdEM410xReader(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf em 410x reader",
                   "read EM 410x tag",
-                  "lf em 410x reader                      -> reader\n"
+                  "lf em 410x reader\n"
                   "lf em 410x reader -@                   -> continuous reader mode\n"
-                  "lf em 410x reader --clk 32             -> reader using a clock of RF/32\n"
-                  "lf em 410x reader --clk 32 -i          -> reader using a clock of RF/32 and inverting data\n"
-                  "lf em 410x reader -i                   -> reader while inverting data\n"
-                  "lf em 410x reader --clk 64 -i --err 0  -> reader using a clock of RF/64 and inverting data and allowing 0 demod errors"
+                  "lf em 410x reader --clk 32             -> using a clock of RF/32\n"
+                  "lf em 410x reader --clk 32 -i          -> using a clock of RF/32 and inverting data\n"
+                  "lf em 410x reader -i                   -> inverting data\n"
+                  "lf em 410x reader --clk 64 -i --err 0  -> using a clock of RF/64 and inverting data and allowing 0 demod errors"
                  );
 
     void *argtable[] = {
@@ -387,7 +414,7 @@ static int CmdEM410xReader(const char *Cmd) {
         lf_read(false, 12288);
         AskEm410xDemod(clk, invert, max_err, max_len, amplify, &hi, &lo, verbose);
 
-        if (break_first && g_em410xid != 0) {
+        if (break_first && gs_em410xid != 0) {
             break;
         }
     } while (cm && !kbd_enter_pressed());
@@ -410,7 +437,7 @@ static int CmdEM410xSim(const char *Cmd) {
     void *argtable[] = {
         arg_param_begin,
         arg_u64_0(NULL, "clk", "<dec>", "<32|64> clock (default 64)"),
-        arg_str1(NULL, "id", "<hex>", "ID number (5 hex bytes)"),
+        arg_str1(NULL, "id", "<hex>", "EM Tag ID number (5 hex bytes)"),
         arg_u64_0(NULL, "gap", "<dec>", "gap (0's) between ID repeats (default 20)"),
         arg_param_end
     };
@@ -425,11 +452,11 @@ static int CmdEM410xSim(const char *Cmd) {
     CLIParserFree(ctx);
 
     if (uid_len != 5) {
-        PrintAndLogEx(FAILED, "UID must include 5 hex bytes (%u)", uid_len);
+        PrintAndLogEx(FAILED, "EM ID must include 5 hex bytes (10 hex symbols), got " _YELLOW_("%u"), uid_len);
         return PM3_EINVARG;
     }
 
-    PrintAndLogEx(SUCCESS, "Starting simulating UID "_YELLOW_("%s")" clock: "_YELLOW_("%d"), sprint_hex_inrow(uid, sizeof(uid)), clk);
+    PrintAndLogEx(SUCCESS, "Starting simulating EM Tag ID "_YELLOW_("%s")" clock: "_YELLOW_("%d"), sprint_hex_inrow(uid, sizeof(uid)), clk);
     em410x_construct_emul_graph(uid, clk, gap);
     CmdLFSim("");
     return PM3_SUCCESS;
@@ -449,7 +476,7 @@ static int CmdEM410xBrute(const char *Cmd) {
         arg_param_begin,
         arg_u64_0(NULL, "clk", "<dec>", "<32|64> clock (default 64)"),
         arg_u64_0(NULL, "delay", "<dec>", "pause delay in milliseconds between UIDs simulation (default 1000ms)"),
-        arg_str1("f", "file", "<hex>", "file with UIDs in HEX format, one per line"),
+        arg_str1("f", "file", "<hex>", "file with EM Tag IDs, one id per line"),
         arg_u64_0(NULL, "gap", "<dec>", "gap (0's) between ID repeats (default 20)"),
         arg_param_end
     };
@@ -479,7 +506,7 @@ static int CmdEM410xBrute(const char *Cmd) {
     // open file
     FILE *f = NULL;
     if ((f = fopen(filename, "r")) == NULL) {
-        PrintAndLogEx(ERR, "Error: Could not open UIDs file ["_YELLOW_("%s")"]", filename);
+        PrintAndLogEx(ERR, "Error: Could not open EM Tag IDs file ["_YELLOW_("%s")"]", filename);
         return PM3_EFILE;
     }
 
@@ -502,7 +529,7 @@ static int CmdEM410xBrute(const char *Cmd) {
         if (buf[0] == '#') continue;
 
         if (param_gethex(buf, 0, uid, 10)) {
-            PrintAndLogEx(FAILED, "UIDs must include 10 HEX symbols");
+            PrintAndLogEx(FAILED, "EM Tag IDs must include 5 hex bytes (10 hex symbols)");
             free(uidblock);
             fclose(f);
             return PM3_ESOFT;
@@ -513,7 +540,7 @@ static int CmdEM410xBrute(const char *Cmd) {
         if (stUidBlock - uidcnt < 2) {
             p = realloc(uidblock, 5 * (stUidBlock += 10));
             if (!p) {
-                PrintAndLogEx(WARNING, "Cannot allocate memory for UIDs");
+                PrintAndLogEx(WARNING, "Cannot allocate memory for EM Tag IDs");
                 free(uidblock);
                 fclose(f);
                 return PM3_ESOFT;
@@ -528,12 +555,12 @@ static int CmdEM410xBrute(const char *Cmd) {
     fclose(f);
 
     if (uidcnt == 0) {
-        PrintAndLogEx(FAILED, "No UIDs found in file");
+        PrintAndLogEx(FAILED, "No EM Tag IDs found in file");
         free(uidblock);
         return PM3_ESOFT;
     }
 
-    PrintAndLogEx(SUCCESS, "Loaded "_YELLOW_("%d")" UIDs from "_YELLOW_("%s")", pause delay:"_YELLOW_("%d")" ms", uidcnt, filename, delay);
+    PrintAndLogEx(SUCCESS, "Loaded "_YELLOW_("%d")" EM Tag IDs from "_YELLOW_("%s")", pause delay:"_YELLOW_("%d")" ms", uidcnt, filename, delay);
 
     // loop
     uint8_t testuid[5];
@@ -546,7 +573,7 @@ static int CmdEM410xBrute(const char *Cmd) {
         }
 
         memcpy(testuid, uidblock + 5 * c, 5);
-        PrintAndLogEx(INFO, "Bruteforce %d / %u: simulating UID " _YELLOW_("%s")
+        PrintAndLogEx(INFO, "Bruteforce %d / %u: simulating EM Tag ID " _YELLOW_("%s")
                       , c + 1
                       , uidcnt
                       , sprint_hex_inrow(testuid, sizeof(testuid))
@@ -560,7 +587,7 @@ static int CmdEM410xBrute(const char *Cmd) {
             uint16_t len;
             uint16_t gap;
         } PACKED payload;
-        payload.len = GraphTraceLen;
+        payload.len = g_GraphTraceLen;
         payload.gap = 0;
 
         clearCommandBuffer();
@@ -583,7 +610,7 @@ static int CmdEM410xSpoof(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf em 410x spoof",
                   "Watch 'nd Spoof, activates reader\n"
-                  "Waits until a EM 410x tag gets presented then Proxmark3 starts simulating the found UID",
+                  "Waits until a EM 410x tag gets presented then Proxmark3 starts simulating the found EM Tag ID",
                   "lf em 410x spoof"
                  );
 
@@ -595,9 +622,9 @@ static int CmdEM410xSpoof(const char *Cmd) {
     CLIParserFree(ctx);
 
     // loops if the captured ID was in XL-format.
-    g_em410xid = 0;
+    gs_em410xid = 0;
     CmdEM410xReader("-b@");
-    PrintAndLogEx(SUCCESS, "Replaying captured ID "_YELLOW_("%010" PRIx64), g_em410xid);
+    PrintAndLogEx(SUCCESS, "Replaying captured EM Tag ID "_YELLOW_("%010" PRIx64), gs_em410xid);
     CmdLFSim("");
     return PM3_SUCCESS;
 }
@@ -605,16 +632,18 @@ static int CmdEM410xSpoof(const char *Cmd) {
 static int CmdEM410xClone(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "lf em 410x clone",
-                  "Writes EM410x ID to a T55x7 or Q5/T5555 tag",
-                  "lf em 410x clone --id 0F0368568B        -> write id to T55x7 tag\n"
-                  "lf em 410x clone --id 0F0368568B --q5   -> write id to Q5/T5555 tag"
+                  "clone a EM410x ID to a T55x7, Q5/T5555 or EM4305/4469 tag.",
+                  "lf em 410x clone --id 0F0368568B        -> encode for T55x7 tag\n"
+                  "lf em 410x clone --id 0F0368568B --q5   -> encode for Q5/T5555 tag\n"
+                  "lf em 410x clone --id 0F0368568B --em   -> encode for EM4305/4469"
                  );
 
     void *argtable[] = {
         arg_param_begin,
         arg_u64_0(NULL, "clk", "<dec>", "<16|32|40|64> clock (default 64)"),
-        arg_str1(NULL, "id", "<hex>", "ID number (5 hex bytes)"),
-        arg_lit0(NULL, "q5", "specify writing to Q5/T5555 tag"),
+        arg_str1(NULL, "id", "<hex>", "EM Tag ID number (5 hex bytes)"),
+        arg_lit0(NULL, "q5", "optional - specify writing to Q5/T5555 tag"),
+        arg_lit0(NULL, "em", "optional - specify writing to EM4305/4469 tag"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -625,9 +654,19 @@ static int CmdEM410xClone(const char *Cmd) {
     uint8_t uid[5] = {0};
     CLIGetHexWithReturn(ctx, 2, uid, &uid_len);
     bool q5 = arg_get_lit(ctx, 3);
+    bool em = arg_get_lit(ctx, 4);
     CLIParserFree(ctx);
 
     uint64_t id = bytes_to_num(uid, uid_len);
+    if (id == 0) {
+        PrintAndLogEx(ERR, "Cardnumber can't be zero");
+        return PM3_EINVARG;
+    }
+
+    if (q5 && em) {
+        PrintAndLogEx(FAILED, "Can't specify both Q5 and EM4305 at the same time");
+        return PM3_EINVARG;
+    }
 
     // Allowed clock rates: 16, 32, 40 and 64
     if ((clk != 16) && (clk != 32) && (clk != 64) && (clk != 40)) {
@@ -635,34 +674,27 @@ static int CmdEM410xClone(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    char cardtype[16] = {"T55x7"};
-    if (q5) {
-        snprintf(cardtype, sizeof(cardtype), "Q5/T5555");
-    }
-
-    PrintAndLogEx(SUCCESS, "Preparing to clone EM4102 to " _YELLOW_("%s") " tag with ID " _GREEN_("%010" PRIX64) " (RF/%d)", cardtype, id, clk);
-    // NOTE: We really should pass the clock in as a separate argument, but to
-    //   provide for backwards-compatibility for older firmware, and to avoid
-    //   having to add another argument to CMD_LF_EM410X_WRITE, we just store
-    //   the clock rate in bits 8-15 of the card value
+    PrintAndLogEx(SUCCESS, "Preparing to clone EM4102 to " _YELLOW_("%s") " tag with EM Tag ID " _GREEN_("%010" PRIX64) " (RF/%d)", q5 ? "Q5/T5555" : (em ? "EM4305/4469" : "T55x7"), id, clk);
 
     struct {
-        uint8_t card;
+        bool Q5;
+        bool EM;
         uint8_t clock;
         uint32_t high;
         uint32_t low;
-    } PACKED params;
+    } PACKED payload;
 
-    params.card = (q5) ? 0 : 1;
-    params.clock = clk;
-    params.high = (uint32_t)(id >> 32);
-    params.low = (uint32_t)id;
+    payload.Q5 = q5;
+    payload.EM = em;
+    payload.clock = clk;
+    payload.high = (uint32_t)(id >> 32);
+    payload.low = (uint32_t)id;
 
     clearCommandBuffer();
-    SendCommandNG(CMD_LF_EM410X_WRITE, (uint8_t *)&params, sizeof(params));
+    SendCommandNG(CMD_LF_EM410X_CLONE, (uint8_t *)&payload, sizeof(payload));
 
     PacketResponseNG resp;
-    WaitForResponse(CMD_LF_EM410X_WRITE, &resp);
+    WaitForResponse(CMD_LF_EM410X_CLONE, &resp);
     switch (resp.status) {
         case PM3_SUCCESS: {
             PrintAndLogEx(SUCCESS, "Done");
@@ -684,9 +716,9 @@ static command_t CommandTable[] = {
     {"reader", CmdEM410xReader,   IfPm3Lf,         "attempt to read and extract tag data"},
     {"sim",    CmdEM410xSim,      IfPm3Lf,         "simulate EM410x tag"},
     {"brute",  CmdEM410xBrute,    IfPm3Lf,         "reader bruteforce attack by simulating EM410x tags"},
-    {"watch",  CmdEM410xWatch,    IfPm3Lf,         "watches for EM410x 125/134 kHz tags (option 'h' for 134)"},
-    {"spoof",  CmdEM410xSpoof,    IfPm3Lf,         "watches for EM410x 125/134 kHz tags, and replays them. (option 'h' for 134)" },
-    {"clone",  CmdEM410xClone,    IfPm3Lf,         "write EM410x UID to T55x7 or Q5/T5555 tag"},
+    {"watch",  CmdEM410xWatch,    IfPm3Lf,         "watches for EM410x 125/134 kHz tags"},
+    {"spoof",  CmdEM410xSpoof,    IfPm3Lf,         "watches for EM410x 125/134 kHz tags, and replays them" },
+    {"clone",  CmdEM410xClone,    IfPm3Lf,         "write EM410x Tag ID to T55x7 or Q5/T5555 tag"},
     {NULL, NULL, NULL, NULL}
 };
 

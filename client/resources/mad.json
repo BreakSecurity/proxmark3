@@ -399,7 +399,7 @@
         "system_integrator": "Mikron GmbH"
     },
     {
-        "application": "Employer indentification card",
+        "application": "Employer identification card",
         "company": "VFJ Technology Pty Ltd",
         "mad": "0x0113",
         "service_provider": "VFJ Electronics Pty Ltd.",
@@ -413,7 +413,7 @@
         "system_integrator": "Cubic - VFJ"
     },
     {
-        "application": "Card Administratin, cardholder adminstration, access control & security, company services, miscellaneous applications",
+        "application": "Card Administration, cardholder administration, access control & security, company services, miscellaneous applications",
         "company": "Ministry of Defense",
         "mad": "0x0115",
         "service_provider": "Ministry of Defence",
@@ -1092,28 +1092,28 @@
         "system_integrator": "INID"
     },
     {
-        "application": "Public transport sytems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
+        "application": "Public transport systems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
         "company": "Duha systém s.r.o.",
         "mad": "0x0735",
         "service_provider": "DUHA systém s.r.o.",
         "system_integrator": "DUHA systém s.r.o."
     },
     {
-        "application": "Public transport sytems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
+        "application": "Public transport systems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
         "company": "Duha systém s.r.o.",
         "mad": "0x0736",
         "service_provider": "DUHA systém s.r.o.",
         "system_integrator": "DUHA systém s.r.o."
     },
     {
-        "application": "Public transport sytems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
+        "application": "Public transport systems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
         "company": "Duha systém s.r.o.",
         "mad": "0x0737",
         "service_provider": "DUHA systém s.r.o.",
         "system_integrator": "DUHA systém s.r.o."
     },
     {
-        "application": "Public transport sytems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
+        "application": "Public transport systems. Parking systems. Catering. Electronic wallet. Reservation system. Access services. Attendance services. Industrial identification. City card.",
         "company": "Duha systém s.r.o.",
         "mad": "0x0738",
         "service_provider": "DUHA systém s.r.o.",
@@ -2412,7 +2412,7 @@
         "company": "Ascom Monétel",
         "mad": "0x2013",
         "service_provider": "ZTM (Transport Company of Marsaw)",
-        "system_integrator": "Ascom Monetel (porject leader Mr. Pascal Valette)"
+        "system_integrator": "Ascom Monetel (project leader Mr. Pascal Valette)"
     },
     {
         "application": "Electronic transportation voucher",
@@ -3731,7 +3731,7 @@
         "system_integrator": "GiroVend"
     },
     {
-        "application": "Card Administratin, cardholder adminstration, access control & security, company services, miscellaneous applications",
+        "application": "Card Administratin, cardholder administration, access control & security, company services, miscellaneous applications",
         "company": "Ministry of Defense",
         "mad": "0x3802",
         "service_provider": "Ministry of Defence",
@@ -4072,6 +4072,20 @@
         "mad": "0x3D01",
         "service_provider": "HID Corporation",
         "system_integrator": "HID Corporation"
+    },
+    {
+        "application": "City transport, prepaid ticket, cardholder, servicespass",
+        "company": "Ridango AS",
+        "mad": "0x3C56",
+        "service_provider": "Pilet.ee ekaart",
+        "system_integrator": "Pilet.ee ekaart"
+    },
+    {
+        "application": "City transport, prepaid ticket, cardholder, servicespass",
+        "company": "Ridango AS",
+        "mad": "0x3D56",
+        "service_provider": "Pilet.ee ekaart",
+        "system_integrator": "Pilet.ee ekaart"
     },
     {
         "application": "City transport bus, ferry, administration",
@@ -4683,7 +4697,7 @@
         "system_integrator": "Interflex Datensysteme GmbH"
     },
     {
-        "application": "Employer indentification card",
+        "application": "Employer identification card",
         "company": "VFJ Technology Pty Ltd",
         "mad": "0x4808",
         "service_provider": "VFJ Electronics Pty Ltd.",
@@ -4725,7 +4739,7 @@
         "system_integrator": "Siemens AG"
     },
     {
-        "application": "Card Administratin, cardholder adminstration, access control & security, company services, miscellaneous applications",
+        "application": "Card Administration, cardholder administration, access control & security, company services, miscellaneous applications",
         "company": "Ministry of Defense",
         "mad": "0x480E",
         "service_provider": "Ministry of Defence",
@@ -6099,20 +6113,55 @@
     },
     {
         "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4914",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4915",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4916",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4917",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4918",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
         "company": "NORALSY",
         "mad": "0x4980",
         "service_provider": "NORALSY",
         "system_integrator": "NORALSY"
     },
     {
-        "application": "Card Administratin, cardholder adminstration, access control & security, company services, miscellaneous applications",
+        "application": "Card Administration, cardholder administration, access control & security, company services, miscellaneous applications",
         "company": "Ministry of Defense",
         "mad": "0x4A01",
         "service_provider": "Ministry of Defence",
         "system_integrator": ""
     },
     {
-        "application": "Card Administratin, cardholder adminstration, access control & security, company services, miscellaneous applications",
+        "application": "Card Administration, cardholder administration, access control & security, company services, miscellaneous applications",
         "company": "Ministry of Defense",
         "mad": "0x4A02",
         "service_provider": "Ministry of Defence",
@@ -6847,14 +6896,14 @@
         "system_integrator": "Honeywell"
     },
     {
-        "application": "Electronic purse, access control for buliding automation",
+        "application": "Electronic purse, access control for building automation",
         "company": "CDE Communication Data Engineering GmbH",
         "mad": "0x5138",
         "service_provider": "CDE",
         "system_integrator": "CDE"
     },
     {
-        "application": "Electronic purse, access control for buliding automation",
+        "application": "Electronic purse, access control for building automation",
         "company": "CDE Communication Data Engineering GmbH",
         "mad": "0x5139",
         "service_provider": "CDE",
@@ -7022,14 +7071,14 @@
         "system_integrator": "Sogedex"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x5152",
         "service_provider": "Sogedex",
         "system_integrator": "Sogedex"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x5153",
         "service_provider": "Sogedex",
@@ -7491,70 +7540,70 @@
         "system_integrator": "EMGROUP"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x5195",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x5196",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x5197",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x5198",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x5199",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x519A",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x519B",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x519C",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x519D",
         "service_provider": "SOGEDEX",
         "system_integrator": "SOGEDEX"
     },
     {
-        "application": "Identification and authentification system",
+        "application": "Identification and authentication system",
         "company": "Sogedex",
         "mad": "0x519E",
         "service_provider": "SOGEDEX",
@@ -7792,21 +7841,21 @@
         "system_integrator": "DAS Card AB"
     },
     {
-        "application": "Accesss Control; biometric Identification",
+        "application": "Access Control; biometric Identification",
         "company": "SYTEL",
         "mad": "0x51C0",
         "service_provider": "SYTEL",
         "system_integrator": "SYTEL"
     },
     {
-        "application": "Accesss Control; biometric Identification",
+        "application": "Access Control; biometric Identification",
         "company": "SYTEL",
         "mad": "0x51C1",
         "service_provider": "SYTEL",
         "system_integrator": "SYTEL"
     },
     {
-        "application": "Accesss Control; biometric Identification",
+        "application": "Access Control; biometric Identification",
         "company": "SYTEL",
         "mad": "0x51C2",
         "service_provider": "SYTEL",
@@ -7874,6 +7923,13 @@
         "mad": "0x51CB",
         "service_provider": "Atelei Engineering",
         "system_integrator": "Atelei Engineering"
+    },
+    {
+        "application": "Access control",
+        "company": "LEAF Identity",
+        "mad": "0x51CD",
+        "service_provider": "",
+        "system_integrator": ""
     },
     {
         "application": "Access & biometrics application",
@@ -8401,7 +8457,7 @@
         "system_integrator": "n/a"
     },
     {
-        "application": "High performance physical Accesss Control (reacting and writing on ccard in real time)",
+        "application": "High performance physical Access Control (reacting and writing on ccard in real time)",
         "company": "Qontinuum Plus",
         "mad": "0x5325",
         "service_provider": "the users themselves",
@@ -10564,7 +10620,7 @@
         "system_integrator": "VFJ Hong Kong"
     },
     {
-        "application": "Security and safty services",
+        "application": "Security and safety services",
         "company": "Staat der Nederlanden, Ministerie van Financien Belastingdienst/Centrum voor facilitaire dienstverlening",
         "mad": "0x8006",
         "service_provider": "Siemens Nederland BV",
@@ -10578,7 +10634,7 @@
         "system_integrator": "Voestalpine Informationstechnologie GmbH"
     },
     {
-        "application": "Accesss control in sport stadiums and e-purse",
+        "application": "Access control in sport stadiums and e-purse",
         "company": "FortressGb",
         "mad": "0x8008",
         "service_provider": "FORTRESSGB",
@@ -10620,7 +10676,7 @@
         "system_integrator": "Fourth Way"
     },
     {
-        "application": "Employer indentification card",
+        "application": "Employer identification card",
         "company": "VFJ Technology Pty Ltd",
         "mad": "0x8805",
         "service_provider": "VFJ Electronics Pty Ltd.",
@@ -11047,14 +11103,14 @@
         "system_integrator": "PVT"
     },
     {
-        "application": "Electronic purse, access control for buliding automation",
+        "application": "Electronic purse, access control for building automation",
         "company": "CDE Communication Data Engineering GmbH",
         "mad": "0x8843",
         "service_provider": "CDE",
         "system_integrator": "CDE"
     },
     {
-        "application": "Electronic purse, access control for buliding automation",
+        "application": "Electronic purse, access control for building automation",
         "company": "CDE Communication Data Engineering GmbH",
         "mad": "0x8844",
         "service_provider": "CDE",
@@ -11747,7 +11803,7 @@
         "system_integrator": "SIT Solution for IT Payment GmbH"
     },
     {
-        "application": "Accesss control in sport stadiums and e-purse",
+        "application": "Access control in sport stadiums and e-purse",
         "company": "FortressGb",
         "mad": "0x88AB",
         "service_provider": "FORTRESSGB",
@@ -12160,7 +12216,7 @@
         "system_integrator": "Siemens AG"
     },
     {
-        "application": "Security and safty services",
+        "application": "Security and safety services",
         "company": "Staat der Nederlanden, Ministerie van Financien Belastingdienst/Centrum voor facilitaire dienstverlening",
         "mad": "0xC006",
         "service_provider": "Siemens Nederland BV",
@@ -12594,7 +12650,7 @@
         "system_integrator": "efkon"
     },
     {
-        "application": "Security and safty services",
+        "application": "Security and safety services",
         "company": "Staat der Nederlanden, Ministerie van Financien Belastingdienst/Centrum voor facilitaire dienstverlening",
         "mad": "0xC819",
         "service_provider": "Siemens Nederland BV",
@@ -12804,7 +12860,7 @@
         "system_integrator": "Retail Petroleum Systems"
     },
     {
-        "application": "Driver Vehicle Indentification / fueling",
+        "application": "Driver Vehicle Identification / fueling",
         "company": "Nedap - CTP B.V.",
         "mad": "0xD004",
         "service_provider": "Nedap CTP B.V.",
@@ -13357,7 +13413,7 @@
         "system_integrator": "Honeywell Automation India Limited"
     },
     {
-        "application": "Security and safty services",
+        "application": "Security and safety services",
         "company": "Staat der Nederlanden, Ministerie van Financien Belastingdienst/Centrum voor facilitaire dienstverlening",
         "mad": "0xD801",
         "service_provider": "Siemens Nederland BV",
@@ -13420,7 +13476,7 @@
         "system_integrator": "IE Holding"
     },
     {
-        "application": "Security and safty services",
+        "application": "Security and safety services",
         "company": "Staat der Nederlanden, Ministerie van Financien Belastingdienst/Centrum voor facilitaire dienstverlening",
         "mad": "0xE802",
         "service_provider": "Siemens Nederland BV",

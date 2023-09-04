@@ -32,6 +32,10 @@
 #include "cryptolib.h"
 #include "util.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 using namespace std;
 
 #ifdef _MSC_VER
@@ -159,6 +163,10 @@ void print_cs(const char *text, pcs s) {
 }
 
 static inline uint8_t mod(uint8_t a, uint8_t m) {
+    if (m == 0) {
+        return 0; // Actually, divide by zero error
+    }
+
     // Just return the input when this is less or equal than the modular value
     if (a < m) return a;
 
@@ -179,7 +187,7 @@ static inline uint8_t bit_rotate_r(uint8_t a, uint8_t n_bits) {
     return ((a >> 1) | ((a & 1) << (n_bits - 1)));
 }
 
-static uint8_t lookup_left_substraction[0x400];
+static uint8_t lookup_left_subtraction[0x400];
 static uint8_t lookup_right_subtraction[0x400];
 static lookup_entry lookup_left[0x100000];
 static lookup_entry lookup_right[0x8000];
@@ -211,15 +219,15 @@ static inline void init_lookup_right() {
     }
 }
 
-static void init_lookup_left_substraction() {
+static void init_lookup_left_subtraction() {
     for (int index = 0; index < 0x400 ; index++) {
         uint8_t b3 = (index >> 5 & 0x1f);
         uint8_t bx = (index & 0x1f);
-        lookup_left_substraction[index] = bit_rotate_r(mod((bx + 0x1f) - b3, 0x1f), 5);
+        lookup_left_subtraction[index] = bit_rotate_r(mod((bx + 0x1f) - b3, 0x1f), 5);
     }
 }
 
-static void init_lookup_right_substraction() {
+static void init_lookup_right_subtraction() {
     for (int index = 0; index < 0x400 ; index++) {
         int b16 = (index >> 5);
         uint8_t bx = (index & 0x1f);
@@ -248,7 +256,7 @@ static inline void previous_left(uint8_t in, vector<cs_t> *candidate_states) {
                 state->l ^= (((uint64_t)in & 0x1f) << 20);
             }
         } else {
-            uint8_t b6 = lookup_left_substraction[b3 | bx];
+            uint8_t b6 = lookup_left_subtraction[b3 | bx];
             state->l = (state->l & 0x7ffffffe0ull) | b6;
             state->l ^= (((uint64_t)in & 0x1f) << 20);
 
@@ -331,11 +339,10 @@ static inline uint8_t next_right_fast(uint8_t in, uint64_t *right) {
 
 static inline void sm_left_mask(const uint8_t *ks, uint8_t *mask, uint64_t rstate) {
     size_t pos;
-    uint8_t bt;
 
     for (pos = 0; pos < 16; pos++) {
         next_right_fast(0, &rstate);
-        bt = next_right_fast(0, &rstate) << 4;
+        uint8_t bt = next_right_fast(0, &rstate) << 4;
         next_right_fast(0, &rstate);
         bt |= next_right_fast(0, &rstate);
 
@@ -349,7 +356,7 @@ static inline void sm_left_mask(const uint8_t *ks, uint8_t *mask, uint64_t rstat
 
 static inline uint32_t sm_right(const uint8_t *ks, uint8_t *mask, vector<uint64_t> *pcrstates) {
     uint8_t tmp_mask[16];
-    size_t pos, bits, bit, topbits;
+    size_t pos, bit, topbits;
     uint64_t rstate, counter;
     map<uint64_t, uint64_t> bincstates;
     map<uint64_t, uint64_t>::iterator it;
@@ -358,7 +365,7 @@ static inline uint32_t sm_right(const uint8_t *ks, uint8_t *mask, vector<uint64_
     topbits = 0;
     for (counter = 0; counter < 0x2000000; counter++) {
         // Reset the current bitcount of correct bits
-        bits = 0;
+        size_t bits = 0;
 
         // Copy the state we are going to test
         rstate = counter;
@@ -408,7 +415,7 @@ static inline uint32_t sm_right(const uint8_t *ks, uint8_t *mask, vector<uint64_
     for (it = bincstates.begin(); it != bincstates.end(); ++it) {
         pcrstates->push_back(it->second);
     }
-    // Reverse the vector order (so the higest bin comes first)
+    // Reverse the vector order (so the highest bin comes first)
     reverse(pcrstates->begin(), pcrstates->end());
 
     return topbits;
@@ -511,10 +518,10 @@ static inline void search_gc_candidates_right(const uint64_t rstate_before_gc, c
     }
 }
 
-static inline void sm_left(const uint8_t *ks, uint8_t *mask, vector<cs_t> *pcstates) {
+static inline void sm_left(const uint8_t *ks, const uint8_t *mask, vector<cs_t> *pcstates) {
     map<uint64_t, cs_t> bincstates;
     map<uint64_t, cs_t>::iterator it;
-    uint64_t counter, lstate;
+    uint64_t counter;
     size_t pos, bits, bit;
     uint8_t correct_bits[16];
     uint8_t bt;
@@ -526,7 +533,7 @@ static inline void sm_left(const uint8_t *ks, uint8_t *mask, vector<cs_t> *pcsta
     state.invalid = false;
 
     for (counter = 0; counter < 0x800000000ull; counter++) {
-        lstate = counter;
+        uint64_t lstate = counter;
 
         for (pos = 0; pos < 16; pos++) {
             lstate = (((lstate) >> 5) | ((uint64_t)left_addition[((lstate) & 0xf801f)] << 30));
@@ -588,7 +595,7 @@ static inline void sm_left(const uint8_t *ks, uint8_t *mask, vector<cs_t> *pcsta
     for (it = bincstates.begin(); it != bincstates.end(); ++it) {
         pcstates->push_back(it->second);
     }
-    // Reverse the vector order (so the higest bin comes first)
+    // Reverse the vector order (so the highest bin comes first)
     reverse(pcstates->begin(), pcstates->end());
 }
 
@@ -664,13 +671,12 @@ static inline void search_gc_candidates_left(const uint64_t lstate_before_gc, co
 
 void combine_valid_left_right_states(vector<cs_t> *plcstates, vector<cs_t> *prcstates, vector<uint64_t> *pgc_candidates) {
     vector<cs_t>::iterator itl, itr;
-    size_t pos, count;
+    size_t pos;
     uint64_t gc;
     bool valid;
 
     // Clean up the candidate list
     pgc_candidates->clear();
-    count = 0;
     for (itl = plcstates->begin(); itl != plcstates->end(); ++itl) {
         for (itr = prcstates->begin(); itr != prcstates->end(); ++itr) {
             valid = true;
@@ -693,7 +699,6 @@ void combine_valid_left_right_states(vector<cs_t> *plcstates, vector<cs_t> *prcs
 //        printf("%09llx - ",itl->l);
 //        printf("%07llx\n",itr->r);
             }
-            count++;
         }
     }
     printf("Found a total of " _YELLOW_("%llu")" combinations, ", ((unsigned long long)plcstates->size()) * prcstates->size());
@@ -733,8 +738,8 @@ int main(int argc, const char *argv[]) {
 
     uint64_t nCi;   // Card random
     uint64_t nQ;    // Reader random
-    uint64_t nCh;   // Reader challange
-    uint64_t nCi_1; // Card anwser
+    uint64_t nCh;   // Reader challenge
+    uint64_t nCi_1; // Card answer
 
     if ((argc != 2) && (argc != 5)) {
         printf("SecureMemory recovery - (c) Radboud University Nijmegen\n\n");
@@ -755,7 +760,7 @@ int main(int argc, const char *argv[]) {
             Q[pos] = rand();
         }
         sm_auth(Gc, Ci, Q, Ch, Ci_1, &ostate);
-        printf("  Gc: ");
+        printf("  Gc... ");
         print_bytes(Gc, 8);
     } else {
         sscanf(argv[1], "%016" SCNx64, &nCi);
@@ -766,7 +771,7 @@ int main(int argc, const char *argv[]) {
         num_to_bytes(nCh, 8, Ch);
         sscanf(argv[4], "%016" SCNx64, &nCi_1);
         num_to_bytes(nCi_1, 8, Ci_1);
-        printf("  Gc: unknown\n");
+        printf("  Gc... unknown\n");
     }
 
     for (pos = 0; pos < 8; pos++) {
@@ -774,24 +779,24 @@ int main(int argc, const char *argv[]) {
         ks[(2 * pos) + 1] = Ch[pos];
     }
 
-    printf("  Ci: ");
+    printf("  Ci... ");
     print_bytes(Ci, 8);
-    printf("   Q: ");
+    printf("   Q... ");
     print_bytes(Q, 8);
-    printf("  Ch: ");
+    printf("  Ch... ");
     print_bytes(Ch, 8);
-    printf("Ci+1: ");
+    printf("Ci+1... ");
     print_bytes(Ci_1, 8);
     printf("\n");
-    printf("  Ks: ");
+    printf("  Ks... ");
     print_bytes(ks, 16);
     printf("\n");
 
     printf("Initializing lookup tables for increasing cipher speed\n");
     init_lookup_left();
     init_lookup_right();
-    init_lookup_left_substraction();
-    init_lookup_right_substraction();
+    init_lookup_left_subtraction();
+    init_lookup_right_subtraction();
 
     // Load in the ci (tag-nonce), together with the first half of Q (reader-nonce)
     rstate_before_gc = 0;
@@ -841,7 +846,7 @@ int main(int argc, const char *argv[]) {
             num_to_bytes(*itgc, 8, Gc_chk);
             sm_auth(Gc_chk, Ci, Q, Ch_chk, Ci_1_chk, &ostate);
             if ((memcmp(Ch_chk, Ch, 8) == 0) && (memcmp(Ci_1_chk, Ci_1, 8) == 0)) {
-                printf("\nFound valid key: " _GREEN_("%016" PRIx64)"\n\n", *itgc);
+                printf("\nValid key found [ " _GREEN_("%016" PRIx64)" ]\n\n", *itgc);
                 return 0;
             }
         }
@@ -849,3 +854,7 @@ int main(int argc, const char *argv[]) {
     }
     return 0;
 }
+
+#if defined(__cplusplus)
+}
+#endif

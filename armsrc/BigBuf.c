@@ -1,10 +1,17 @@
 //-----------------------------------------------------------------------------
-// Jonathan Westhues, Aug 2005
-// Gerhard de Koning Gans, April 2008, May 2011
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // BigBuf and functions to allocate/free parts of it.
 //-----------------------------------------------------------------------------
@@ -13,6 +20,7 @@
 #include "string.h"
 #include "dbprint.h"
 #include "pm3_cmd.h"
+#include "util.h" // nbytes
 
 extern uint32_t _stack_start[], __bss_end__[];
 
@@ -49,7 +57,7 @@ static tosend_t toSend = {
 };
 //=============================================================================
 // The dmaBuf 16bit buffer.
-// A buffer where we recive IQ samples sent from the FPGA, for demodulating
+// A buffer where we receive IQ samples sent from the FPGA, for demodulating
 //=============================================================================
 static dmabuf16_t dma_16 = {
     .size = DMA_BUFFER_SIZE,
@@ -169,7 +177,7 @@ void BigBuf_print_status(void) {
     Dbprintf("  tracing ................ %d", tracing);
     Dbprintf("  traceLen ............... %d", trace_len);
 
-    if (DBGLEVEL >= DBG_DEBUG) {
+    if (g_dbglevel >= DBG_DEBUG) {
         DbpString(_CYAN_("Sending buffers"));
 
         uint16_t d8 = 0;
@@ -225,7 +233,7 @@ uint32_t BigBuf_get_traceLen(void) {
   by 'hf list -t raw', alternatively 'hf list -t <proto>' for protocol-specific
   annotation of commands/responses.
 **/
-bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_start, uint32_t timestamp_end, uint8_t *parity, bool readerToTag) {
+bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_start, uint32_t timestamp_end, const uint8_t *parity, bool reader2tag) {
     if (tracing == false) {
         return false;
     }
@@ -250,7 +258,7 @@ bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_
 
     if (duration > 0xFFFF) {
         /*
-        if (DBGLEVEL >= DBG_DEBUG) {
+        if (g_dbglevel >= DBG_DEBUG) {
             Dbprintf("Error in LogTrace: duration too long for 16 bits encoding: 0x%08x   start: 0x%08x end: 0x%08x", duration, timestamp_start, timestamp_end);
         }
         */
@@ -260,7 +268,7 @@ bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_
     hdr->timestamp = timestamp_start;
     hdr->duration = duration & 0xFFFF;
     hdr->data_len = iLen;
-    hdr->isResponse = !readerToTag;
+    hdr->isResponse = !reader2tag;
     trace_len += TRACELOG_HDR_LEN;
 
     // data bytes
@@ -282,26 +290,40 @@ bool RAMFUNC LogTrace(const uint8_t *btBytes, uint16_t iLen, uint32_t timestamp_
 }
 
 // specific LogTrace function for ISO15693: the duration needs to be scaled because otherwise it won't fit into a uint16_t
-bool LogTrace_ISO15693(const uint8_t *bytes, uint16_t len, uint32_t ts_start, uint32_t ts_end, uint8_t *parity, bool reader2tag) {
+bool LogTrace_ISO15693(const uint8_t *bytes, uint16_t len, uint32_t ts_start, uint32_t ts_end, const uint8_t *parity, bool reader2tag) {
     uint32_t duration = ts_end - ts_start;
     duration /= 32;
     ts_end = ts_start + duration;
     return LogTrace(bytes, len, ts_start, ts_end, parity, reader2tag);
 }
 
+// specific LogTrace function for bitstreams: the partial byte size is stored in first parity byte. E.g. bitstream "1100 00100010" -> partial byte: 4 bits
+bool RAMFUNC LogTraceBits(const uint8_t *btBytes, uint16_t bitLen, uint32_t timestamp_start, uint32_t timestamp_end, bool reader2tag) {
+    uint8_t parity[(nbytes(bitLen) - 1) / 8 + 1];
+    memset(parity, 0x00, sizeof(parity));
+    parity[0] = bitLen % 8;
+    return LogTrace(btBytes, nbytes(bitLen), timestamp_start, timestamp_end, parity, reader2tag);
+}
 
 // Emulator memory
-uint8_t emlSet(uint8_t *data, uint32_t offset, uint32_t length) {
+uint8_t emlSet(const uint8_t *data, uint32_t offset, uint32_t length) {
     uint8_t *mem = BigBuf_get_EM_addr();
-    if (offset + length < CARD_MEMORY_SIZE) {
+    if (offset + length <= CARD_MEMORY_SIZE) {
         memcpy(mem + offset, data, length);
         return 0;
     }
-    Dbprintf("Error, trying to set memory outside of bounds! %d  > %d", (offset + length), CARD_MEMORY_SIZE);
+    Dbprintf("Error, trying to set memory outside of bounds! " _RED_("%d") " > %d", (offset + length), CARD_MEMORY_SIZE);
     return 1;
 }
-
-
+uint8_t emlGet(uint8_t *out, uint32_t offset, uint32_t length) {
+    uint8_t *mem = BigBuf_get_EM_addr();
+    if (offset + length <= CARD_MEMORY_SIZE) {
+        memcpy(out, mem + offset, length);
+        return 0;
+    }
+    Dbprintf("Error, trying to read memory outside of bounds! " _RED_("%d") " > %d", (offset + length), CARD_MEMORY_SIZE);
+    return 1;
+}
 
 // get the address of the ToSend buffer. Allocate part of Bigbuf for it, if not yet done
 tosend_t *get_tosend(void) {

@@ -1,9 +1,17 @@
 //-----------------------------------------------------------------------------
-// Copyright (C) 2019 iceman <iceman at iuse.se>
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Generator commands
 //-----------------------------------------------------------------------------
@@ -19,12 +27,23 @@
 #include "common.h"       //BSWAP_32/64
 #include "util.h"
 #include "pm3_cmd.h"
-#include "ui.h"
-#include "mbedtls/sha1.h"
 #include "crc16.h"        // crc16 ccitt
+#include "mbedtls/sha1.h"
+#include "mbedtls/md5.h"
+#include "mbedtls/cmac.h"
+#include "mbedtls/cipher.h"
+#include "mbedtls/md.h"
 
-// Implemetation tips:
-// For each implementation of the algos, I recommend adding a self test for easy "simple unit" tests when Travic CI / Appveyour runs.
+#ifndef ON_DEVICE
+#include "ui.h"
+# define prnt(args...) PrintAndLogEx(DEBUG, ## args );
+#else
+# include "dbprint.h"
+# define prnt Dbprintf
+#endif
+
+// Implementation tips:
+// For each implementation of the algos, I recommend adding a self test for easy "simple unit" tests when Travis CI / Appveyor runs.
 // See special note for MFC based algos.
 
 //------------------------------------
@@ -73,7 +92,7 @@ static void transform_D(uint8_t *ru) {
 }
 
 // Transport system (IT) pwd generation algo nickname A.
-uint32_t ul_ev1_pwdgenA(uint8_t *uid) {
+uint32_t ul_ev1_pwdgenA(const uint8_t *uid) {
 
     uint8_t pos = (uid[3] ^ uid[4] ^ uid[5] ^ uid[6]) % 32;
 
@@ -98,7 +117,7 @@ uint32_t ul_ev1_pwdgenA(uint8_t *uid) {
 }
 
 // Amiibo pwd generation algo nickname B. (very simple)
-uint32_t ul_ev1_pwdgenB(uint8_t *uid) {
+uint32_t ul_ev1_pwdgenB(const uint8_t *uid) {
 
     uint8_t pwd[] = {0x00, 0x00, 0x00, 0x00};
 
@@ -110,7 +129,7 @@ uint32_t ul_ev1_pwdgenB(uint8_t *uid) {
 }
 
 // Lego Dimension pwd generation algo nickname C.
-uint32_t ul_ev1_pwdgenC(uint8_t *uid) {
+uint32_t ul_ev1_pwdgenC(const uint8_t *uid) {
     uint32_t pwd = 0;
     uint32_t base[] = {
         0xffffffff, 0x28ffffff,
@@ -128,7 +147,7 @@ uint32_t ul_ev1_pwdgenC(uint8_t *uid) {
 }
 
 // XYZ 3d printing pwd generation algo nickname D.
-uint32_t ul_ev1_pwdgenD(uint8_t *uid) {
+uint32_t ul_ev1_pwdgenD(const uint8_t *uid) {
 
     uint8_t i;
     // rotation offset
@@ -152,18 +171,56 @@ uint32_t ul_ev1_pwdgenD(uint8_t *uid) {
     return BSWAP_32(pwd);
 }
 
+// AIR purifier Xiaomi
+uint32_t ul_ev1_pwdgenE(const uint8_t *uid) {
+    uint8_t hash[20] = {0};
+    mbedtls_sha1(uid, 7, hash);
+    uint32_t pwd = 0;
+    pwd |= (hash[ hash[0] % 20 ]) << 24 ;
+    pwd |= (hash[(hash[0] + 5) % 20 ]) << 16;
+    pwd |= (hash[(hash[0] + 13) % 20 ]) << 8;
+    pwd |= (hash[(hash[0] + 17) % 20 ]);
+    return pwd;
+}
+
+// NDEF tools format password generator
+uint32_t ul_ev1_pwdgenF(const uint8_t *uid) {
+    uint8_t hash[16] = {0};;
+    mbedtls_md5(uid, 7, hash);
+    uint32_t pwd = 0;
+    pwd |= hash[0] << 24;
+    pwd |= hash[1] << 16;
+    pwd |= hash[2] << 8;
+    pwd |= hash[3];
+    return pwd;
+}
+
+// Solution from @atc1441
+// https://gist.github.com/atc1441/41af75048e4c22af1f5f0d4c1d94bb56
+// Philips Sonicare toothbrush NFC head
+uint32_t ul_ev1_pwdgenG(const uint8_t *uid, const uint8_t *mfg) {
+
+    init_table(CRC_PHILIPS);
+    // UID
+    uint32_t crc1 = crc16_philips(uid, 7);
+    // MFG string
+    uint32_t crc2 = crc16_fast(mfg, 10, crc1, false, false);
+
+    return (BSWAP_16(crc2) << 16 | BSWAP_16(crc1));
+}
+
 // pack generation for algo 1-3
-uint16_t ul_ev1_packgenA(uint8_t *uid) {
+uint16_t ul_ev1_packgenA(const uint8_t *uid) {
     uint16_t pack = (uid[0] ^ uid[1] ^ uid[2]) << 8 | (uid[2] ^ 8);
     return pack;
 }
-uint16_t ul_ev1_packgenB(uint8_t *uid) {
+uint16_t ul_ev1_packgenB(const uint8_t *uid) {
     return 0x8080;
 }
-uint16_t ul_ev1_packgenC(uint8_t *uid) {
+uint16_t ul_ev1_packgenC(const uint8_t *uid) {
     return 0xaa55;
 }
-uint16_t ul_ev1_packgenD(uint8_t *uid) {
+uint16_t ul_ev1_packgenD(const uint8_t *uid) {
     uint8_t i;
     //Rotate
     uint8_t r = (uid[2] + uid[5]) & 7; //Rotation offset
@@ -181,13 +238,40 @@ uint16_t ul_ev1_packgenD(uint8_t *uid) {
     p ^= 0x5555;
     return BSWAP_16(p & 0xFFFF);
 }
+uint16_t ul_ev1_packgenE(const uint8_t *uid) {
 
-uint32_t ul_ev1_pwdgen_def(uint8_t *uid) {
+    uint32_t pwd = ul_ev1_pwdgenE(uid);
+    return (0xAD << 8 | ((pwd >> 24) & 0xFF));
+}
+
+uint16_t ul_ev1_packgenG(const uint8_t *uid, const uint8_t *mfg) {
+    init_table(CRC_PHILIPS);
+    // UID
+    uint32_t crc1 = crc16_philips(uid, 7);
+    // MFG string
+    uint32_t crc2 = crc16_fast(mfg, 10, crc1, false, false);
+    // PWD
+    uint32_t pwd = (BSWAP_16(crc2) << 16 | BSWAP_16(crc1));
+
+    uint8_t pb[4];
+    num_to_bytes(pwd, 4, pb);
+    return BSWAP_16(crc16_fast(pb, 4, crc2, false, false));
+}
+
+
+// default shims
+uint32_t ul_ev1_pwdgen_def(const uint8_t *uid) {
     return 0xFFFFFFFF;
 }
-uint16_t ul_ev1_packgen_def(uint8_t *uid) {
+uint16_t ul_ev1_packgen_def(const uint8_t *uid) {
     return 0x0000;
 }
+
+// MIFARE ULTRALIGHT OTP generators
+uint32_t ul_c_otpgenA(const uint8_t *uid) {
+    return 0x534C544F;
+}
+
 
 //------------------------------------
 // MFC key generation stuff
@@ -260,7 +344,7 @@ int mfc_algo_saflok_all(uint8_t *uid, uint8_t *keys) {
 }
 
 // MIZIP algo
-int mfc_algo_mizip_one(uint8_t *uid, uint8_t sector, uint8_t keytype, uint64_t *key) {
+int mfc_algo_mizip_one(const uint8_t *uid, uint8_t sector, uint8_t keytype, uint64_t *key) {
     if (sector > 4) return PM3_EINVARG;
     if (key == NULL) return PM3_EINVARG;
     if (keytype > 2) return PM3_EINVARG;
@@ -434,23 +518,14 @@ uint32_t lf_t55xx_white_pwdgen(uint32_t id) {
 // Gallagher Desfire Key Diversification Input for Cardax Card Data Application
 int mfdes_kdf_input_gallagher(uint8_t *uid, uint8_t uidLen, uint8_t keyNo, uint32_t aid, uint8_t *kdfInputOut, uint8_t *kdfInputLen) {
     if (uid == NULL || (uidLen != 4 && uidLen != 7) || keyNo > 2 || kdfInputOut == NULL || kdfInputLen == NULL) {
-        if (g_debugMode) {
-            PrintAndLogEx(WARNING, "Invalid arguments");
-        }
-        return PM3_EINVARG;
-    }
-
-    // Verify the AppID is a valid Gallagher AppID
-    if ((aid & 0xF0FFFF) != 0x2081F4) {
-        if (g_debugMode) {
-            PrintAndLogEx(WARNING, "Invalid Gallagher AID %06X", aid);
-        }
+        prnt("Invalid arguments");
         return PM3_EINVARG;
     }
 
     int len = 0;
-    // If the keyNo == 1, then omit the UID.
-    if (keyNo != 1) {
+    // If the keyNo == 1 or the aid is 000000, then omit the UID.
+    // On the other hand, if the aid is 1f81f4 (config card) always include the UID.
+    if ((keyNo != 1 && aid != 0x000000) || (aid == 0x1f81f4)) {
         if (*kdfInputLen < (4 + uidLen)) {
             return PM3_EINVARG;
         }
@@ -474,7 +549,7 @@ int mfdes_kdf_input_gallagher(uint8_t *uid, uint8_t uidLen, uint8_t keyNo, uint3
 
 int mfc_generate4b_nuid(uint8_t *uid, uint8_t *nuid) {
     uint16_t crc;
-    uint8_t b1, b2;
+    uint8_t b1 = 0, b2 = 0;
 
     compute_crc(CRC_14443_A, uid, 3, &b1, &b2);
     nuid[0] = (b2 & 0xE0) | 0xF;
@@ -505,9 +580,10 @@ int mfc_algo_touch_one(uint8_t *uid, uint8_t sector, uint8_t keytype, uint64_t *
 //------------------------------------
 // Self tests
 //------------------------------------
-int generator_selftest(void) {
 
-#define NUM_OF_TEST     6
+int generator_selftest(void) {
+#ifndef ON_DEVICE
+#define NUM_OF_TEST     9
 
     PrintAndLogEx(INFO, "PWD / KEY generator selftest");
     PrintAndLogEx(INFO, "----------------------------");
@@ -543,18 +619,41 @@ int generator_selftest(void) {
         testresult++;
     PrintAndLogEx(success ? SUCCESS : WARNING, "UID | %s | %08X - %s", sprint_hex(uid4, 7), pwd4, success ? "OK" : "->72B1EC61<--");
 
+    uint8_t uid5[] = {0x04, 0xA0, 0x3C, 0xAA, 0x1E, 0x70, 0x80};
+    uint32_t pwd5 = ul_ev1_pwdgenE(uid5);
+    success = (pwd5 == 0xCD91AFCC);
+    if (success)
+        testresult++;
+    PrintAndLogEx(success ? SUCCESS : WARNING, "UID | %s | %08X - %s", sprint_hex(uid5, 7), pwd5, success ? "OK" : "->CD91AFCC<--");
+
+    uint8_t uid6[] = {0x04, 0x77, 0x42, 0xAB, 0xEF, 0x42, 0x70};
+    uint32_t pwd6 = ul_ev1_pwdgenF(uid6);
+    success = (pwd6 == 0xA9C4C3C0);
+    if (success)
+        testresult++;
+    PrintAndLogEx(success ? SUCCESS : WARNING, "UID | %s | %08X - %s", sprint_hex(uid6, 7), pwd6, success ? "OK" : "->A9C4C3C0<--");
+
+    uint8_t uid7[] = {0x04, 0x0D, 0x4B, 0x5A, 0xC5, 0x71, 0x81};
+    uint8_t mfg[] = {0x32, 0x31, 0x30, 0x36, 0x32, 0x38, 0x20, 0x35, 0x32, 0x4D};
+    uint32_t pwd7 = ul_ev1_pwdgenG(uid7, mfg);
+    success = (pwd7 == 0xFBCFACC1);
+    if (success)
+        testresult++;
+    PrintAndLogEx(success ? SUCCESS : WARNING, "UID | %s | %08X - %s", sprint_hex(uid7, 7), pwd7, success ? "OK" : "->FBCFACC1<--");
+
+
 //    uint8_t uid5[] = {0x11, 0x22, 0x33, 0x44};
 //    uint64_t key1 = mfc_algo_a(uid5);
 //    success = (key1 == 0xD1E2AA68E39A);
 //    PrintAndLogEx(success ? SUCCESS : WARNING, "UID | %s | %"PRIx64" - %s", sprint_hex(uid5, 4), key1, success ? "OK" : "->D1E2AA68E39A<--");
 
-    uint8_t uid6[] = {0x74, 0x57, 0xCA, 0xA9};
-    uint64_t key6 = 0;
-    mfc_algo_sky_one(uid6, 15, 0, &key6);
-    success = (key6 == 0x82c7e64bc565);
+    uint8_t uid8[] = {0x74, 0x57, 0xCA, 0xA9};
+    uint64_t key8 = 0;
+    mfc_algo_sky_one(uid8, 15, 0, &key8);
+    success = (key8 == 0x82c7e64bc565);
     if (success)
         testresult++;
-    PrintAndLogEx(success ? SUCCESS : WARNING, "UID | %s          | %"PRIx64" - %s", sprint_hex(uid6, 4), key6, success ? "OK" : "->82C7E64BC565<--");
+    PrintAndLogEx(success ? SUCCESS : WARNING, "UID | %s          | %"PRIx64" - %s", sprint_hex(uid8, 4), key8, success ? "OK" : "->82C7E64BC565<--");
 
 
     uint32_t lf_id = lf_t55xx_white_pwdgen(0x00000080);
@@ -564,6 +663,8 @@ int generator_selftest(void) {
     PrintAndLogEx(success ? SUCCESS : WARNING, "ID  | 0x00000080            | %08"PRIx32 " - %s", lf_id, success ? "OK" : "->00018383<--");
 
     PrintAndLogEx(SUCCESS, "------------------- Selftest %s", (testresult == NUM_OF_TEST) ? "OK" : "fail");
+
+#endif
     return PM3_SUCCESS;
 }
 

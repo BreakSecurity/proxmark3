@@ -1,8 +1,17 @@
 //-----------------------------------------------------------------------------
+// Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
 //
-// This code is licensed to you under the terms of the GNU GPL, version 2 or,
-// at your option, any later version. See the LICENSE.txt file for the text of
-// the license.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
 // Low frequency Jablotron tag commands
 // Differential Biphase, RF/64, 64 bits long (complete)
@@ -57,8 +66,8 @@ int demodJablotron(bool verbose) {
         if (g_debugMode) PrintAndLogEx(DEBUG, "DEBUG: Error - Jablotron ASKbiphaseDemod failed");
         return PM3_ESOFT;
     }
-    size_t size = DemodBufferLen;
-    int ans = detectJablotron(DemodBuffer, &size);
+    size_t size = g_DemodBufferLen;
+    int ans = detectJablotron(g_DemodBuffer, &size);
     if (ans < 0) {
         if (g_debugMode) {
             if (ans == -1)
@@ -75,23 +84,23 @@ int demodJablotron(bool verbose) {
         return PM3_ESOFT;
     }
 
-    setDemodBuff(DemodBuffer, JABLOTRON_ARR_LEN, ans);
+    setDemodBuff(g_DemodBuffer, JABLOTRON_ARR_LEN, ans);
     setClockGrid(g_DemodClock, g_DemodStartIdx + (ans * g_DemodClock));
 
     //got a good demod
-    uint32_t raw1 = bytebits_to_byte(DemodBuffer, 32);
-    uint32_t raw2 = bytebits_to_byte(DemodBuffer + 32, 32);
+    uint32_t raw1 = bytebits_to_byte(g_DemodBuffer, 32);
+    uint32_t raw2 = bytebits_to_byte(g_DemodBuffer + 32, 32);
 
     // bytebits_to_byte - uint32_t
-    uint64_t rawid = ((uint64_t)(bytebits_to_byte(DemodBuffer + 16, 8) & 0xff) << 32) | bytebits_to_byte(DemodBuffer + 24, 32);
+    uint64_t rawid = ((uint64_t)(bytebits_to_byte(g_DemodBuffer + 16, 8) & 0xff) << 32) | bytebits_to_byte(g_DemodBuffer + 24, 32);
     uint64_t id = getJablontronCardId(rawid);
 
     PrintAndLogEx(SUCCESS, "Jablotron - Card: " _GREEN_("%"PRIx64) ", Raw: %08X%08X", id, raw1, raw2);
 
     uint8_t chksum = raw2 & 0xFF;
-    bool isok = (chksum == jablontron_chksum(DemodBuffer));
+    bool isok = (chksum == jablontron_chksum(g_DemodBuffer));
 
-    PrintAndLogEx(DEBUG, "Checksum: %02X (%s)", chksum, isok ? _GREEN_("ok") : _RED_("Fail"));
+    PrintAndLogEx(DEBUG, "Checksum: %02X ( %s )", chksum, isok ? _GREEN_("ok") : _RED_("Fail"));
 
     id = DEC2BCD(id);
     // Printed format: 1410-nn-nnnn-nnnn
@@ -154,9 +163,9 @@ static int CmdJablotronClone(const char *Cmd) {
     CLIParserInit(&ctx, "lf jablotron clone",
                   "clone a Jablotron tag to a T55x7, Q5/T5555 or EM4305/4469 tag.\n"
                   "Tag must be on the antenna when issuing this command.",
-                  "lf jablotron clone --cn 01b669\n"
-                  "lf jablotron clone --q5 --cn 01b669 -> encode for Q5/T5555 tag\n"
-                  "lf jablotron clone --em --cn 01b669 -> encode for EM4305/4469"
+                  "lf jablotron clone --cn 01b669      -> encode for T55x7 tag\n"
+                  "lf jablotron clone --cn 01b669 --q5 -> encode for Q5/T5555 tag\n"
+                  "lf jablotron clone --cn 01b669 --em -> encode for EM4305/4469"
                  );
 
     void *argtable[] = {
