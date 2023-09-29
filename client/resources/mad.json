@@ -4074,6 +4074,20 @@
         "system_integrator": "HID Corporation"
     },
     {
+        "application": "City transport, prepaid ticket, cardholder, servicespass",
+        "company": "Ridango AS",
+        "mad": "0x3C56",
+        "service_provider": "Pilet.ee ekaart",
+        "system_integrator": "Pilet.ee ekaart"
+    },
+    {
+        "application": "City transport, prepaid ticket, cardholder, servicespass",
+        "company": "Ridango AS",
+        "mad": "0x3D56",
+        "service_provider": "Pilet.ee ekaart",
+        "system_integrator": "Pilet.ee ekaart"
+    },
+    {
         "application": "City transport bus, ferry, administration",
         "company": "VFJ Technology Pty Ltd",
         "mad": "0x4001",
@@ -6094,6 +6108,41 @@
         "application": "(access control and security) VIGIK",
         "company": "CDV International",
         "mad": "0x4913",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4914",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4915",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4916",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4917",
+        "service_provider": "CDVI",
+        "system_integrator": "CDVI"
+    },
+    {
+        "application": "(access control and security) VIGIK",
+        "company": "CDV International",
+        "mad": "0x4918",
         "service_provider": "CDVI",
         "system_integrator": "CDVI"
     },
